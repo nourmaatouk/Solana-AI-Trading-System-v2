@@ -1,0 +1,43 @@
+# ─── Virtual environment ────────────────────────────────────
+ml_env/
+venv/
+.venv/
+env/
+
+# ─── Python cache ───────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# ─── Data files (large / re-generatable) ────────────────────
+data/raw/
+data/processed/*.csv
+data/processed/*.parquet
+data/processed/*.npy
+data/processed/*.pkl
+
+# ─── Trained model weights ──────────────────────────────────
+models/
+*.json
+# Keep reports (small, useful for reviewers)
+!reports/model_performance_summary.json
+
+# ─── Jupyter / IPython ──────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ─── OS noise ───────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── IDE / editor ───────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ─── Logs ───────────────────────────────────────────────────
+*.log
