@@ -39,12 +39,12 @@ for dir_path in [VALIDATION_PLOTS_DIR, TEST_PLOTS_DIR, REPORTS_DIR]:
     dir_path.mkdir(parents=True, exist_ok=True)
 
 # Data file paths
-X_TRAIN_PATH = DATA_DIR / "X_train.npy"
-Y_TRAIN_PATH = DATA_DIR / "y_train.npy"
-X_VAL_PATH = DATA_DIR / "X_val.npy"
-Y_VAL_PATH = DATA_DIR / "y_val.npy"
-X_TEST_PATH = DATA_DIR / "X_test.npy"
-Y_TEST_PATH = DATA_DIR / "y_test.npy"
+X_TRAIN_PATH = DATA_DIR / "X_train_no_leak.npy"
+Y_TRAIN_PATH = DATA_DIR / "y_train_no_leak.npy"
+X_VAL_PATH = DATA_DIR / "X_val_no_leak.npy"
+Y_VAL_PATH = DATA_DIR / "y_val_no_leak.npy"
+X_TEST_PATH = DATA_DIR / "X_test_no_leak.npy"
+Y_TEST_PATH = DATA_DIR / "y_test_no_leak.npy"
 
 REPORT_PATH = REPORTS_DIR / "model_performance_summary.json"
 
@@ -68,9 +68,9 @@ except FileNotFoundError as e:
     print(f"✗ Error loading data files: {e}")
     print(f"  Expected directory: {DATA_DIR}")
     print(f"  Expected files:")
-    print(f"    - X_train.npy, y_train.npy")
-    print(f"    - X_val.npy, y_val.npy")
-    print(f"    - X_test.npy, y_test.npy")
+    print(f"    - X_train_no_leak.npy, y_train_no_leak.npy")
+    print(f"    - X_val_no_leak.npy, y_val_no_leak.npy")
+    print(f"    - X_test_no_leak.npy, y_test_no_leak.npy")
     exit(1)
 
 print(f"  X_train shape: {X_train.shape}  y_train shape: {y_train.shape}")

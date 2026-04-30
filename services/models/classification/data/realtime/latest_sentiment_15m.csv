@@ -1,0 +1,2 @@
+timestamp,sentiment_mean,sentiment_std,news_volume,positive_ratio,negative_ratio,neutral_ratio,max_confidence,gdelt_volume,rss_volume,gdelt_sentiment,rss_sentiment,sentiment_spike
+2026-04-30 09:15:00+00:00,-0.9581958400085568,0.0,1,0.0,1.0,0.0,0.9682021737098694,0,1,0.0,-0.9581958400085568,0.6150468501728028

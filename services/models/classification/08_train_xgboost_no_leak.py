@@ -19,7 +19,7 @@ from sklearn.metrics import (
 # CONFIG
 # =========================================================
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DATA_DIR = PROJECT_ROOT / "data" / "processed"
+DATA_DIR = Path(__file__).resolve().parent / "data" / "processed"
 MODEL_DIR = PROJECT_ROOT / "models"
 
 MODEL_DIR.mkdir(parents=True, exist_ok=True)
@@ -61,6 +61,7 @@ def evaluate_model(y_true: np.ndarray, y_prob: np.ndarray, threshold: float = 0.
 # LOAD
 # =========================================================
 print("Loading no-leak data...")
+print(f"DATA_DIR resolving to: {DATA_DIR}")
 
 X_train = np.load(X_TRAIN_PATH)
 y_train = np.load(Y_TRAIN_PATH)
@@ -150,3 +151,78 @@ print(MODEL_PATH)
 
 print("\nSaved metrics to:")
 print(METRICS_PATH)
+
+
+# =========================================================
+# SHAP EXPLAINABILITY
+# =========================================================
+print("\n" + "="*60)
+print("RUNNING SHAP EXPLAINABILITY ANALYSIS")
+print("="*60)
+
+try:
+    import shap
+    import matplotlib.pyplot as plt
+
+    # 1. Load feature names to map the flattened indices
+    FEATURE_COLS_PATH = DATA_DIR / "feature_columns.json"
+    if not FEATURE_COLS_PATH.exists():
+        print(f"Warning: feature_columns.json not found at {FEATURE_COLS_PATH}. Using generic names.")
+        feature_names = [f"f{i}" for i in range(X_train.shape[2])]
+    else:
+        with open(FEATURE_COLS_PATH, "r") as f:
+            feature_names = json.load(f)
+
+    SEQ_LEN = X_train.shape[1] 
+    NUM_FEATS = X_train.shape[2]
+
+    # Generate names for flattened features, e.g., "RSI_t-31", "RSI_t-30", ...
+    # Following the order: time_step_0 (t-31) features, then time_step_1 (t-30) features...
+    flattened_names = []
+    for t in range(SEQ_LEN):
+        t_offset = (SEQ_LEN - 1) - t
+        suffix = f"t-{t_offset}" if t_offset > 0 else "t-0"
+        for name in feature_names:
+            flattened_names.append(f"{name}_{suffix}")
+
+    # 2. Compute SHAP values
+    # Use a subset of test data for speed (e.g., 200 samples)
+    explainer = shap.Explainer(model)
+    subset_size = min(200, len(X_test_flat))
+    X_subset = X_test_flat[:subset_size]
+    
+    print(f"Computing SHAP values for {subset_size} samples...")
+    shap_values = explainer(X_subset)
+
+    # 3. Plotting
+    REPORT_DIR = PROJECT_ROOT / "classification" / "reports"
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    
+    # Summary Plot
+    plt.figure(figsize=(12, 8))
+    shap.summary_plot(shap_values, X_subset, feature_names=flattened_names, show=False, max_display=20)
+    plt.title("XGBoost SHAP Summary (Top 20 Time-Series Features)")
+    
+    summary_plot_path = REPORT_DIR / "xgboost_shap_summary.png"
+    plt.savefig(summary_plot_path, bbox_inches='tight', dpi=150)
+    plt.close()
+    
+    print(f"SHAP Summary Plot saved to: {summary_plot_path}")
+
+    # Bar Plot (Global Importance)
+    plt.figure(figsize=(12, 8))
+    shap.plots.bar(shap_values, max_display=20, show=False)
+    plt.title("XGBoost Global Feature Importance (SHAP Bar Plot)")
+    
+    bar_plot_path = REPORT_DIR / "xgboost_shap_bar.png"
+    plt.savefig(bar_plot_path, bbox_inches='tight', dpi=150)
+    plt.close()
+    
+    print(f"SHAP Bar Plot saved to: {bar_plot_path}")
+
+except ImportError:
+    print("Error: 'shap' or 'matplotlib' not installed. Skipping explainability.")
+except Exception as e:
+    print(f"Error during SHAP analysis: {e}")
+
+print("\nPipeline execution finished.")
