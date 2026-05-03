@@ -131,6 +131,20 @@ def add_realtime_features(df: pd.DataFrame) -> pd.DataFrame:
     out["momentum_6"] = out["close"] - out["close"].shift(6)
     out["momentum_12"] = out["close"] - out["close"].shift(12)
 
+    # -----------------------------------------------------
+    # Regime & Stationary Z-Scores (Alpha Boost)
+    # -----------------------------------------------------
+    rolling_mean_72 = out["close"].rolling(72).mean()
+    rolling_std_72 = out["close"].rolling(72).std()
+    out["z_score_72"] = (out["close"] - rolling_mean_72) / (rolling_std_72 + 1e-12)
+    
+    rolling_vol_mean_72 = out["volume"].rolling(72).mean()
+    rolling_vol_std_72 = out["volume"].rolling(72).std()
+    out["volume_z_score_72"] = (out["volume"] - rolling_vol_mean_72) / (rolling_vol_std_72 + 1e-12)
+    
+    # Is short term momentum aligned with long term trend?
+    out["trend_alignment"] = (out["ema_10"] - out["sma_50"]) / (out["close"] + 1e-12)
+
     # Volume features
     out["volume_change_1"] = out["volume"].pct_change()
     out["volume_sma_20"] = out["volume"].rolling(20).mean()

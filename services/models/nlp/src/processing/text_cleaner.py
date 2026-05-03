@@ -58,3 +58,76 @@ def prepare_article_text(article: Dict) -> str:
     combined = f"{title} {description} {text_content}"
     
     return clean_text(combined)
+
+
+def calculate_relevance_score(text: str) -> float:
+    """
+    Calculates a simple relevance score based on keyword frequency.
+    Keywords: Solana, SOL, crypto market, ETF, hack, outage, whale, liquidity, regulation, stablecoin, dex, defi.
+    """
+    if not text:
+        return 0.0
+        
+    keywords = [
+        "solana", "sol", "crypto market", "etf", 
+        "hack", "exploit", "outage", "whale", "liquidity", 
+        "regulation", "stablecoin", "dex", "defi", "sec",
+        "bullish", "bearish", "airdrop", "listing"
+    ]
+    
+    text_lower = text.lower()
+    score = 0.0
+    
+    # Simple count of how many unique keywords appear
+    for kw in keywords:
+        if kw in text_lower:
+            # Solana and SOL get much higher weights to ensure they are always kept
+            if kw in ["solana", "sol"]:
+                score += 2.0
+            else:
+                score += 1.0
+                
+    return score
+
+
+def classify_event_type(text: str) -> str:
+    """
+    Maps text to specific crypto event categories.
+    Categories: hack/security, outage/network, whale, ETF/regulation, partnership, market_move
+    """
+    if not text:
+        return "general"
+        
+    text_lower = text.lower()
+    
+    mapping = {
+        "hack/security": ["hack", "exploit", "breach", "vulnerability", "attack"],
+        "outage/network": ["outage", "restart", "downtime", "congested", "clogged", "halted"],
+        "whale": ["whale", "large transaction", "large move", "transfer", "shrimp", "dolphin"],
+        "ETF/regulation": ["etf", "sec", "regulation", "lawsuit", "legal", "court", "binance", "coinbase"],
+        "partnership": ["partnership", "partnership", "integrated", "ecosystem", "grant", "collaborated"],
+        "market_move": ["crash", "pump", "surge", "plummet", "liquidations", "moon", "dump"]
+    }
+    
+    for category, keywords in mapping.items():
+        if any(kw in text_lower for kw in keywords):
+            return category
+            
+    return "general"
+
+
+def get_event_weight(event_type: str) -> float:
+    """
+    Returns the impact weight for a specific event category.
+    Higher values = more potential to move the market.
+    """
+    weights = {
+        "hack/security": 3.0,
+        "outage/network": 3.0, # High impact on Solana specially
+        "whale": 2.0,
+        "partnership": 2.0,
+        "ETF/regulation": 1.0,
+        "market_move": 1.0,
+        "general": 0.5
+    }
+    return weights.get(event_type, 0.5)

@@ -7,7 +7,7 @@ from src.fetchers.rss_fetcher import RssFetcher
 from src.processing.sentiment_pipeline import process_articles
 from src.models.finbert_wrapper import FinBertSentimentAnalyzer
 from src.aggregation.feature_aggregator import aggregate_sentiment_15m
-from src.storage.csv_writer import save_sentiment_features
+from src.storage.csv_writer import save_sentiment_features, save_processed_articles
 
 
 def deduplicate_articles(articles: List[Dict]) -> List[Dict]:
@@ -74,6 +74,10 @@ def main():
             
         processed_count = len(df_processed)
         print(f"-> Processed: {processed_count} articles.")
+
+        # Save granular processed articles for validation
+        print("Saving article-level data for validation...")
+        save_processed_articles(df_processed)
 
         # 4. Aggregate intervals
         print("Aggregating to 15-minute intervals...")

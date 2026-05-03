@@ -3,13 +3,11 @@
 
 Task:
 - Load the technical features CSV from classification/data/processed/
-- Load sentiment_features_15m.csv from services/models/nlp/data/processed/
-- Convert both timestamp columns to UTC datetime
-- Left join sentiment onto technical features using timestamp
-- Fill missing sentiment columns with 0
+- Convert timestamp column to UTC datetime
 - Remove leakage columns if present:
   future_return, target, target_up, lead, future, t+1
 - Save output as classification/data/processed/sol_usdt_15m_features_h4_with_sentiment.csv
+  (Name kept identical so downstream '07_prepare_no_leak_data.py' doesn't break)
 """
 
 from __future__ import annotations
@@ -23,10 +21,8 @@ import pandas as pd
 SCRIPT_DIR = Path(__file__).resolve().parent
 MODELS_DIR = SCRIPT_DIR.parent
 CLASSIFICATION_DIR = SCRIPT_DIR
-NLP_DIR = MODELS_DIR / "nlp"
 
 TECH_CSV_PATH = CLASSIFICATION_DIR / "data" / "processed" / "sol_usdt_15m_features_h4.csv"
-SENTIMENT_CSV_PATH = NLP_DIR / "data" / "processed" / "sentiment_features_15m.csv"
 OUTPUT_CSV_PATH = CLASSIFICATION_DIR / "data" / "processed" / "sol_usdt_15m_features_h4_with_sentiment.csv"
 
 LEAKAGE_SUBSTRINGS = [
@@ -53,44 +49,25 @@ def find_ts_col(df: pd.DataFrame) -> str:
     raise ValueError(f"No timestamp column found in columns: {df.columns.tolist()}")
 
 
-def merge_features(tech_path: Path, sent_path: Path, output_path: Path) -> pd.DataFrame:
+def process_features(tech_path: Path, output_path: Path) -> pd.DataFrame:
     print(f"Loading technical features from {tech_path}...")
     df_tech = pd.read_csv(tech_path)
 
-    print(f"Loading sentiment features from {sent_path}...")
-    df_sent = pd.read_csv(sent_path)
-
     ts_tech = find_ts_col(df_tech)
-    ts_sent = find_ts_col(df_sent)
 
     # standardize to 'timestamp'
     if ts_tech != "timestamp":
         df_tech.rename(columns={ts_tech: "timestamp"}, inplace=True)
-    if ts_sent != "timestamp":
-        df_sent.rename(columns={ts_sent: "timestamp"}, inplace=True)
 
     print("Converting timestamps to UTC...")
     df_tech["timestamp"] = pd.to_datetime(df_tech["timestamp"], errors="coerce", utc=True)
-    df_sent["timestamp"] = pd.to_datetime(df_sent["timestamp"], errors="coerce", utc=True)
 
     # drop rows with unparseable timestamps just in case
     df_tech.dropna(subset=["timestamp"], inplace=True)
-    df_sent.dropna(subset=["timestamp"], inplace=True)
-
-    # record original sentiment columns except timestamp
-    sent_cols = [c for c in df_sent.columns if c != "timestamp"]
-
-    print("Merging sentiment onto technical features...")
-    df_merged = pd.merge(df_tech, df_sent, on="timestamp", how="left")
-
-    print("Filling missing sentiment values with 0...")
-    for c in sent_cols:
-        if c in df_merged.columns:
-            df_merged[c] = df_merged[c].fillna(0)
 
     print("Removing leakage columns...")
     cols_to_drop = []
-    for c in df_merged.columns:
+    for c in df_tech.columns:
         c_lower = str(c).lower()
         if c_lower == "target_direction":
             continue
@@ -101,16 +78,16 @@ def merge_features(tech_path: Path, sent_path: Path, output_path: Path) -> pd.Da
 
     if cols_to_drop:
         print(f"Dropping leakage columns: {cols_to_drop}")
-        df_merged.drop(columns=cols_to_drop, inplace=True)
+        df_tech.drop(columns=cols_to_drop, inplace=True)
 
     # Create parent directories
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    print(f"Saving merged data to {output_path}...")
-    df_merged.to_csv(output_path, index=False)
+    print(f"Saving processed technical data to {output_path}...")
+    df_tech.to_csv(output_path, index=False)
     print("Done!")
 
-    return df_merged
+    return df_tech
 
 
 def main() -> int:
@@ -118,11 +95,8 @@ def main() -> int:
     if not TECH_CSV_PATH.exists():
         print(f"ERROR: Tech CSV missing at {TECH_CSV_PATH}")
         return 1
-    if not SENTIMENT_CSV_PATH.exists():
-        print(f"ERROR: Sentiment CSV missing at {SENTIMENT_CSV_PATH}")
-        return 1
 
-    merge_features(TECH_CSV_PATH, SENTIMENT_CSV_PATH, OUTPUT_CSV_PATH)
+    process_features(TECH_CSV_PATH, OUTPUT_CSV_PATH)
     return 0
 
 

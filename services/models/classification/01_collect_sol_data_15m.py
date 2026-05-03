@@ -28,7 +28,7 @@ HORIZON_CANDLES = 4
 MAX_RETRIES = 5
 RETRY_SLEEP_SECONDS = 5
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parent
 RAW_DIR = PROJECT_ROOT / "data" / "raw"
 PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
 

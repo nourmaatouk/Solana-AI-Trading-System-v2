@@ -60,7 +60,19 @@ def main():
     print(f"Expected feature count   : {expected_count}")
     print(f"Real-time feature count : {current_count}")
     if missing_features:
-        print(f"Missing features (filled with 0): {missing_features}")
+        print(f"Missing features: {missing_features}")
+        
+    # Safety Check: Abort if too many features are missing (e.g. > 15%)
+    max_missing = int(0.15 * expected_count)
+    if len(missing_features) > max_missing:
+        print(f"\nCRITICAL WARNING: Too many missing features ({len(missing_features)} > {max_missing} threshold).")
+        print("Model inference aborted to prevent random guessing.")
+        print("-" * 40)
+        print("FINAL SIGNAL     : NEUTRAL (INSUFFICIENT DATA)")
+        print("-" * 40)
+        print("\nFallback to neutral achieved.")
+        print("=" * 60)
+        sys.exit(0)  # Exit gracefully without trading
     
     # 3. Align features: add missing as 0 and reorder
     for col in missing_features:
