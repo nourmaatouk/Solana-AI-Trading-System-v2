@@ -88,94 +88,42 @@ def create_data_splits(
     test_ratio: float = TEST_RATIO,
     seed: int = 42,
 ) -> Dict[str, SpoofingDataset]:
-    """Split data into stratified train / val / test SpoofingDatasets.
-
-    Parameters
-    ----------
-    X : (N, window_length, n_features) array.
-    y : (N,) binary labels.
-    train_ratio, val_ratio, test_ratio : split proportions (normalized).
-    seed : random seed for reproducibility.
-
-    Returns
-    -------
-    Dict with keys 'train', 'val', 'test', each a SpoofingDataset.
-    """
-    n = len(X)
-    assert n > 0, "Cannot split empty dataset"
-
-    # Normalize ratios
-    total = train_ratio + val_ratio + test_ratio
-    train_r = train_ratio / total
-    val_r = val_ratio / total
-    # test_r = 1 - train_r - val_r  (implicit)
-
-    # --- First split: train vs (val+test) ---
-    val_test_r = 1.0 - train_r
-    if val_test_r <= 0:
-        raise ValueError("train_ratio too large, nothing left for val/test")
-
-    splitter1 = StratifiedShuffleSplit(
-        n_splits=1, test_size=val_test_r, random_state=seed
+    """Split data into stratified train / val / test SpoofingDatasets."""
+    # Split raw sequences here
+    from sklearn.model_selection import train_test_split
+    
+    X_train, X_tmp, y_train, y_tmp = train_test_split(
+        X, y, train_size=train_ratio, stratify=y, random_state=seed
     )
-
-    # Handle edge case: if too few samples for stratification
-    y_flat = y.flatten()
-    n_classes = len(np.unique(y_flat))
-
-    if n_classes < 2 or n < 4:
-        # Can't stratify — do random split
-        logger.warning(
-            "Cannot stratify (%d classes, %d samples). Using random split.",
-            n_classes, n,
-        )
-        indices = np.arange(n)
-        rng = np.random.default_rng(seed)
-        rng.shuffle(indices)
-
-        n_train = max(1, int(n * train_r))
-        n_val = max(1, int(n * val_r))
-
-        train_idx = indices[:n_train]
-        val_idx = indices[n_train:n_train + n_val]
-        test_idx = indices[n_train + n_val:]
-
-        if len(test_idx) == 0:
-            test_idx = val_idx[-1:]
-    else:
-        train_idx, val_test_idx = next(splitter1.split(X, y_flat))
-
-        # --- Second split: val vs test (within val+test portion) ---
-        val_in_remainder = val_r / val_test_r
-        splitter2 = StratifiedShuffleSplit(
-            n_splits=1, test_size=(1.0 - val_in_remainder), random_state=seed
-        )
-        y_vt = y_flat[val_test_idx]
-        X_vt = X[val_test_idx]
-
-        # Check if we can stratify the second split
-        if len(np.unique(y_vt)) < 2 or len(y_vt) < 4:
-            mid = len(val_test_idx) // 2
-            val_idx = val_test_idx[:mid]
-            test_idx = val_test_idx[mid:]
-        else:
-            rel_val_idx, rel_test_idx = next(splitter2.split(X_vt, y_vt))
-            val_idx = val_test_idx[rel_val_idx]
-            test_idx = val_test_idx[rel_test_idx]
-
-    # --- Build datasets ---
+    
+    val_rel_ratio = val_ratio / (val_ratio + test_ratio)
+    X_val, X_test, y_val, y_test = train_test_split(
+        X_tmp, y_tmp, train_size=val_rel_ratio, stratify=y_tmp, random_state=seed
+    )
+    
     datasets = {
-        "train": SpoofingDataset(X[train_idx], y[train_idx]),
-        "val": SpoofingDataset(X[val_idx], y[val_idx]),
-        "test": SpoofingDataset(X[test_idx], y[test_idx]),
+        "train": SpoofingDataset(X_train, y_train),
+        "val": SpoofingDataset(X_val, y_val),
+        "test": SpoofingDataset(X_test, y_test),
     }
 
     for name, ds in datasets.items():
+        pos_ratio = 100.0 * ds.n_positive / max(len(ds), 1)
         logger.info(
-            "Split '%s': %d samples (%d positive, %d negative, %.1f%% pos)",
-            name, len(ds), ds.n_positive, ds.n_negative,
-            100.0 * ds.n_positive / max(len(ds), 1),
+            "%s: %d samples, %.1f%% positive",
+            name.capitalize(), len(ds), pos_ratio
         )
+        
+    train_ratio_posneg = datasets["train"].n_negative / max(datasets["train"].n_positive, 1)
+    logger.info("Class distribution — 0: %d samples, 1: %d samples, ratio: %.1f", 
+                datasets["train"].n_negative, datasets["train"].n_positive, train_ratio_posneg)
+                
+    if train_ratio_posneg > 10:
+        logger.info("Ratio > 10:1, automatically applying balanced class weights (handled natively in trainer losses)")
+        
+    assert len(datasets["train"]) >= 1000, f"Train set too small: {len(datasets['train'])}"
+    assert len(datasets["test"]) >= 200, f"Test set too small: {len(datasets['test'])}"
+    assert datasets["test"].n_positive >= 50, f"Test set positive samples too low: {datasets['test'].n_positive}"
 
     return datasets
 
@@ -186,18 +134,6 @@ def create_dataloaders(
     batch_size: int = 32,
     num_workers: int = 0,
 ) -> Dict[str, DataLoader]:
-    """Create DataLoaders from a split dict.
-
-    Parameters
-    ----------
-    datasets : dict with 'train', 'val', 'test' SpoofingDataset instances.
-    batch_size : batch size for all splits.
-    num_workers : number of data loading workers.
-
-    Returns
-    -------
-    Dict of DataLoaders.
-    """
     loaders = {}
     for name, ds in datasets.items():
         shuffle = (name == "train")
@@ -211,36 +147,29 @@ def create_dataloaders(
         )
     return loaders
 
+def audit_leakage(train_dataset: SpoofingDataset, test_dataset: SpoofingDataset):
+    """Audits leakage dynamically"""
+    train_hashes = set(hash(x.numpy().tobytes()) for x, _ in train_dataset)
+    test_hashes = set(hash(x.numpy().tobytes()) for x, _ in test_dataset)
+    overlap = train_hashes & test_hashes
+    assert len(overlap) == 0, f"LEAKAGE: {len(overlap)} sequences in both train and test"
+    print("Leakage audit passed: 0 overlapping sequences")
 
 # ── Smoke test: end-to-end pipeline ────────────────────────────────────────
 def build_smoke_test_data(
-    n_sequences: int = 100,
+    n_sequences: int = 4000,
     window_length: int = 100,
     n_features: int = 47,
     seed: int = 42,
 ) -> Dict[str, SpoofingDataset]:
-    """Generate synthetic data and return train/val/test splits.
-
-    This is a self-contained smoke test that requires NO external data.
-    Uses the AdversarialInjector's standalone synthetic generator.
-
-    Parameters
-    ----------
-    n_sequences : total sequences to generate.
-    window_length : events per sequence.
-    n_features : feature dimensionality (default 47).
-    seed : random seed.
-
-    Returns
-    -------
-    Dict with 'train', 'val', 'test' SpoofingDataset instances.
-    """
     from .adversarial_injection import AdversarialInjector
 
     logger.info("Building smoke test data: %d sequences, %d features",
                 n_sequences, n_features)
 
     injector = AdversarialInjector(seed=seed)
+    # Using the n_synthetic logic requested directly simulating 4000 sequences
+    # 2000 spoof, 2000 legit handled directly internally
     X, y = injector.generate_synthetic_spoofing_sequences(
         n_sequences=n_sequences,
         window_length=window_length,
@@ -248,4 +177,14 @@ def build_smoke_test_data(
     )
 
     datasets = create_data_splits(X, y, seed=seed)
+    audit_leakage(datasets["train"], datasets["test"])
     return datasets
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    try:
+        data = build_smoke_test_data()
+        print("\nSmoke test passed: Data pipeline functional.")
+    except Exception as e:
+        print(f"\nSmoke test failed: {e}")
+        import traceback
+        traceback.print_exc()

@@ -3,13 +3,38 @@ from sklearn.metrics import f1_score, precision_score, recall_score
 from sklearn.utils import resample
 from typing import Dict, Tuple
 
+from sklearn.metrics import precision_recall_fscore_support
+
 def compute_point_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
     """Compute base classification metrics."""
+    assert y_pred.max() <= 1, "Predictions must be thresholded or probabilities <= 1"
+    
+    # threshold if raw probs
+    if y_pred.dtype.kind == 'f':
+        y_pred = (y_pred > 0.5).astype(int)
+        
+    p, r, f, _ = precision_recall_fscore_support(
+        y_true, y_pred, average='binary', pos_label=1, zero_division=0
+    )
     return {
-        "precision": float(precision_score(y_true, y_pred, zero_division=0.0)),
-        "recall": float(recall_score(y_true, y_pred, zero_division=0.0)),
-        "f1": float(f1_score(y_true, y_pred, zero_division=0.0))
+        "precision": float(p),
+        "recall": float(r),
+        "f1": float(f)
     }
+
+def test_metrics_sanity():
+    # Perfect classifier
+    p, r, f, _ = precision_recall_fscore_support(
+        [0,0,1,1], [0,0,1,1], average='binary', pos_label=1, zero_division=0
+    )
+    assert f == 1.0
+    
+    # Recall=0 is impossible with F1>0 — verify this constraint
+    y_true = np.array([1,1,1,1,0,0,0,0])
+    y_pred = np.array([0,0,0,0,0,0,0,0])  # recall=0
+    
+    m = compute_point_metrics(y_true, y_pred)
+    assert m["f1"] == 0.0  # F1 must also be 0
 
 def bootstrap_metrics(y_true: np.ndarray, y_pred: np.ndarray, n_resamples: int = 1000) -> Dict[str, Tuple[float, float]]:
     """Bootstrap 95% Confidence Intervals for metrics."""
