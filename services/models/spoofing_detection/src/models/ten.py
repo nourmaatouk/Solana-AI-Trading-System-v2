@@ -166,7 +166,7 @@ class TENSpoofingDetector(nn.Module):
 
     def __init__(
         self,
-        d_input: int = 47,
+        d_input: int = 49,
         d_model: int = 256,
         n_heads: int = 8,
         d_ff: int = 1024,

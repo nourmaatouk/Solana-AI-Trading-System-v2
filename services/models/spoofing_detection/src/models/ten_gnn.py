@@ -42,7 +42,7 @@ class TENGNNModel(nn.Module):
     def __init__(
         self,
         n_assets: int,
-        d_input: int = 47,
+        d_input: int = 49,
         d_model: int = 256,
         n_heads: int = 8,
         n_layers: int = 6,
@@ -165,7 +165,7 @@ if __name__ == "__main__":
     print("TEN-GNN HYBRID FUSION — SHAPE VERIFICATION")
     print("=" * 70)
     
-    B, N_assets, T, D_input = 4, 5, 100, 47
+    B, N_assets, T, D_input = 4, 5, 100, 49
     
     print(f"Instantiating TENGNNModel (Assets={N_assets}, D={D_input})")
     model = TENGNNModel(n_assets=N_assets, d_input=D_input)

@@ -11,9 +11,15 @@ import numpy as np
 # CONFIG
 # =========================================================
 BASE_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = BASE_DIR.parent
+NLP_DIR = PROJECT_ROOT / "nlp"
 TECH_PATH = BASE_DIR / "data" / "realtime" / "latest_sol_15m_features.csv"
 SENTIMENT_PATH = BASE_DIR / "data" / "realtime" / "latest_sentiment_15m.csv"
 OUTPUT_PATH = BASE_DIR / "data" / "realtime" / "latest_features_with_sentiment.csv"
+
+sys.path.append(str(NLP_DIR))
+
+from src.contracts.layer2_contract import normalize_layer2_bucket_frame
 
 
 def merge_realtime_data(df_tech: pd.DataFrame, df_sent: pd.DataFrame) -> pd.DataFrame:
@@ -22,7 +28,7 @@ def merge_realtime_data(df_tech: pd.DataFrame, df_sent: pd.DataFrame) -> pd.Data
     Uses 'timestamp' as the join key after ensuring UTC normalization.
     """
     df_tech = df_tech.copy()
-    df_sent = df_sent.copy()
+    df_sent = normalize_layer2_bucket_frame(df_sent.copy())
     
     # 1. Standardize timestamps to UTC Datetime
     # Tech data usually has Unix ms and maybe 'datetime' col

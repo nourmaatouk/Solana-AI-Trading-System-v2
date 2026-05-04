@@ -30,3 +30,16 @@ Currently, these tests fall back to a dynamic generation of synthetic LOBSTER da
 Once you are ready to evaluate real data:
 1. Place your actual LOBSTER CSV files inside `data/raw/`.
 2. The pipeline will automatically route through `load_lobster_data()` strictly adapting to your actual orderbook data.
+
+### 4. Deployment & Optimization
+To prepare the model for production HFT environments:
+
+**TorchScript Export (Latency Benchmark)**
+```bash
+python3 -m src.deployment.inference_engine
+```
+
+**Dynamic Quantization (INT8 Optimization)**
+```bash
+python3 -m src.deployment.quantize
+```

@@ -2,6 +2,7 @@ import pandas as pd
 from typing import List, Dict, Optional
 from src.processing.text_cleaner import prepare_article_text, calculate_relevance_score, classify_event_type, get_event_weight
 from src.models.finbert_wrapper import FinBertSentimentAnalyzer
+from src.contracts.nlp_event_contract import normalize_nlp_event
 
 
 def process_articles(
@@ -46,7 +47,7 @@ def process_articles(
         etype = classify_event_type(cleaned_text)
         eweight = get_event_weight(etype)
 
-        processed_data.append({
+        processed_data.append(normalize_nlp_event({
             "timestamp": article.get("published_at"),
             "source": article.get("source"),
             "feed_source": article.get("feed_source"),
@@ -64,7 +65,7 @@ def process_articles(
             "sentiment_score": score,
             "confidence": sentiment_results.get("confidence"),
             "sentiment_label": sentiment_results.get("sentiment_label")
-        })
+        }))
 
     kept_count = len(processed_data)
     

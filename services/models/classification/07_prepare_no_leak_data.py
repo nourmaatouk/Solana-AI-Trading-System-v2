@@ -206,6 +206,87 @@ def process_data_for_horizon(input_path: Path, data_dir: Path, horizon: int) -> 
         "y_test": y_test
     }
 
+
+def process_data(input_path: Path, data_dir: Path) -> dict:
+    """Backward-compatible no-leak preprocessing helper used by tests.
+
+    This builds fixed-length sequences from cleaned tabular rows and stores
+    train/val/test arrays using the historical no-leak filenames.
+    """
+    df = pd.read_csv(input_path)
+    df.replace([np.inf, -np.inf], np.nan, inplace=True)
+    df.dropna(inplace=True)
+
+    target_col = "target_direction"
+    leakage_substrings = ["future_return", "target", "lead", "future", "t+1"]
+    always_drop = {"timestamp", "datetime", "date", "time", "ts"}
+
+    cols_to_drop = []
+    for col in df.columns:
+        col_lower = str(col).lower()
+        if col == target_col:
+            continue
+        if col_lower in always_drop or any(sub in col_lower for sub in leakage_substrings):
+            cols_to_drop.append(col)
+
+    feature_columns = [col for col in df.columns if col not in cols_to_drop and col != target_col]
+    X_raw = df[feature_columns].to_numpy(dtype=np.float64)
+    y_raw = df[target_col].to_numpy(dtype=np.int64) if target_col in df.columns else np.zeros(len(df), dtype=np.int64)
+
+    n = len(df)
+    train_end = int(n * TRAIN_RATIO)
+    val_end = int(n * (TRAIN_RATIO + VAL_RATIO))
+
+    X_train_raw = X_raw[:train_end]
+    y_train_raw = y_raw[:train_end]
+    X_val_raw = X_raw[train_end:val_end]
+    y_val_raw = y_raw[train_end:val_end]
+    X_test_raw = X_raw[val_end:]
+    y_test_raw = y_raw[val_end:]
+
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train_raw)
+    X_val_scaled = scaler.transform(X_val_raw) if len(X_val_raw) else np.empty((0, X_train_scaled.shape[1]), dtype=np.float64)
+    X_test_scaled = scaler.transform(X_test_raw) if len(X_test_raw) else np.empty((0, X_train_scaled.shape[1]), dtype=np.float64)
+
+    seq_len = 32
+
+    def _build_sequences(X_block: np.ndarray, y_block: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        if len(X_block) <= seq_len:
+            return (
+                np.empty((0, seq_len, X_block.shape[1]), dtype=np.float32),
+                np.empty((0,), dtype=np.int64),
+            )
+        sequences = []
+        labels = []
+        for start in range(0, len(X_block) - seq_len):
+            end = start + seq_len
+            sequences.append(X_block[start:end])
+            labels.append(int(y_block[end]))
+        return np.asarray(sequences, dtype=np.float32), np.asarray(labels, dtype=np.int64)
+
+    X_train, y_train = _build_sequences(X_train_scaled, y_train_raw)
+    X_val, y_val = _build_sequences(X_val_scaled, y_val_raw)
+    X_test, y_test = _build_sequences(X_test_scaled, y_test_raw)
+
+    data_dir.mkdir(parents=True, exist_ok=True)
+    np.save(data_dir / "X_train_no_leak.npy", X_train)
+    np.save(data_dir / "y_train_no_leak.npy", y_train)
+    np.save(data_dir / "X_val_no_leak.npy", X_val)
+    np.save(data_dir / "y_val_no_leak.npy", y_val)
+    np.save(data_dir / "X_test_no_leak.npy", X_test)
+    np.save(data_dir / "y_test_no_leak.npy", y_test)
+
+    return {
+        "feature_columns": feature_columns,
+        "X_train": X_train,
+        "y_train": y_train,
+        "X_val": X_val,
+        "y_val": y_val,
+        "X_test": X_test,
+        "y_test": y_test,
+    }
+
 def main():
     if not INPUT_PATH.exists():
         print(f"Error: No input dataset found at {INPUT_PATH}")

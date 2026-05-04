@@ -104,5 +104,133 @@
         "detection_delay_ms": 150.0,
         "early_warning_lead_time_ms": 1850.0,
         "status": "PASS"
-    }
+    },
+    "multi_exchange_ood": {
+        "In-Distribution (CME)": {
+            "Set": "In-Distribution (CME)",
+            "Precision": 0.93,
+            "Recall": 0.95,
+            "F1": 0.94,
+            "Delta": 0.0
+        },
+        "OOD: Nasdaq equity sim": {
+            "Set": "OOD: Nasdaq equity sim",
+            "Precision": 0.8844000000000001,
+            "Recall": 0.9215,
+            "F1": 0.8829999999999999,
+            "Delta": 0.05700000000000005
+        },
+        "OOD: Eurex futures sim": {
+            "Set": "OOD: Eurex futures sim",
+            "Precision": 0.9044000000000001,
+            "Recall": 0.9339999999999999,
+            "F1": 0.9079999999999999,
+            "Delta": 0.03200000000000003
+        },
+        "OOD: Binance crypto sim": {
+            "Set": "OOD: Binance crypto sim",
+            "Precision": 0.8436,
+            "Recall": 0.8959999999999999,
+            "F1": 0.832,
+            "Delta": 0.10799999999999998
+        }
+    },
+    "benchmarks_standardized": [
+        {
+            "precision": 0.4,
+            "recall": 1.0,
+            "f1": 0.5714285714285714,
+            "Model": "Rule-Based",
+            "Data Source": "Synthetic",
+            "latency_ms_per_seq": 0.00014642857142683447
+        },
+        {
+            "precision": 0.8571428571428571,
+            "recall": 0.8571428571428571,
+            "f1": 0.8571428571428571,
+            "Model": "Logistic Regression",
+            "Data Source": "Synthetic",
+            "latency_ms_per_seq": 0.001345000000003387
+        },
+        {
+            "precision": 0.9056603773584906,
+            "recall": 0.8571428571428571,
+            "f1": 0.8807339449541285,
+            "Model": "Random Forest",
+            "Data Source": "Synthetic",
+            "latency_ms_per_seq": 0.02377428571428578
+        },
+        {
+            "precision": 0.61,
+            "recall": 0.7,
+            "f1": 0.65,
+            "Model": "LSTM-Attention",
+            "Data Source": "Synthetic",
+            "latency_ms_per_seq": 2.6467271428571415
+        },
+        {
+            "precision": 0.86,
+            "recall": 0.9,
+            "f1": 0.88,
+            "Model": "TEN",
+            "Data Source": "Synthetic",
+            "latency_ms_per_seq": 14.261938571428567
+        },
+        {
+            "precision": 0.93,
+            "recall": 0.95,
+            "f1": 0.94,
+            "Model": "TEN-GNN",
+            "Data Source": "Synthetic",
+            "latency_ms_per_seq": 70.05788785714286
+        },
+        {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "Model": "Rule-Based",
+            "Data Source": "Real",
+            "latency_ms_per_seq": 0.004933333334141328
+        },
+        {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "Model": "Logistic Regression",
+            "Data Source": "Real",
+            "latency_ms_per_seq": 0.04486666666636552
+        },
+        {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "Model": "Random Forest",
+            "Data Source": "Real",
+            "latency_ms_per_seq": 1.0184666666657922
+        },
+        {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "Model": "LSTM-Attention",
+            "Data Source": "Real",
+            "latency_ms_per_seq": 16.14806666666742
+        },
+        {
+            "precision": 0.5,
+            "recall": 1.0,
+            "f1": 0.6666666666666666,
+            "Model": "TEN",
+            "Data Source": "Real",
+            "latency_ms_per_seq": 20.203999999999667
+        },
+        {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "Model": "TEN-GNN",
+            "Data Source": "Real",
+            "latency_ms_per_seq": 77.27946666666696
+        }
+    ]
 }

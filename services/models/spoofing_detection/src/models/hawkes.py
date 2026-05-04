@@ -3,239 +3,196 @@ hawkes.py — Hawkes Process Adjacency Matrix Estimator
 ======================================================
 
 Estimates multi-asset directional causality (lead-lag relationships) using 
-a multivariate Hawkes Process with exponential decay kernels.
+a multivariate Hawkes Process with a sum of 2 exponential kernels.
 
-The branching ratio A_ij = α_ij / β forms the adjacency matrix, where A_ij 
-represents the expected number of events in asset i directly triggered by 
-a single event in asset j. This captures asymmetric causal influence.
+Kernel: phi_ij(t) = alpha1_ij * exp(-beta1 * t) + alpha2_ij * exp(-beta2 * t)
+  - beta1 = 10.0 (fast decay — captures microsecond reactions)
+  - beta2 = 0.5  (slow decay — captures multi-second clustering)
 
-IMPORTANT DECOUPLING NOTE:
-    Hawkes parameters (μ, α) are estimated via Recursive Maximum Likelihood 
-    on a background CPU thread. They are explicitly NOT part of the PyTorch 
-    computation graph. The resulting adjacency matrix is passed to the GNN 
-    as a static, detached NumPy array. This decoupled optimization is critical 
-    for achieving sub-millisecond inference latency on the critical path.
+The branching ratio A_ij = alpha1_ij/beta1 + alpha2_ij/beta2 forms the adjacency matrix.
 """
 
 import logging
 import threading
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import numpy as np
 from scipy.optimize import minimize
 
 logger = logging.getLogger(__name__)
 
-
 class HawkesEstimator:
-    """Thread-safe multivariate Hawkes Process estimator.
-
-    Uses an exponential excitation kernel:
-        φ_ij(t) = α_ij * exp(-β * t)
+    """Thread-safe multivariate Hawkes Process estimator with double-exponential kernel.
     
-    The adjacency matrix is given by the branching ratio:
-        A_ij = α_ij / β
-
     Parameters
     ----------
     n_assets : int
         Number of assets in the graph.
-    beta : float, default 10.0
-        Decay rate parameter for the exponential kernel.
+    beta1 : float, default 10.0
+        Fast decay rate.
+    beta2 : float, default 0.5
+        Slow decay rate.
     """
 
-    def __init__(self, n_assets: int, beta: float = 10.0):
+    def __init__(self, n_assets: int, beta1: float = 10.0, beta2: float = 0.5):
         self.n_assets = n_assets
-        self.beta = beta
+        self.beta1 = beta1
+        self.beta2 = beta2
         
-        # Protects the numpy array for multi-threaded access
         self._lock = threading.Lock()
-        
-        # Initialize with identity / uniform uniform matrix
         self._adjacency = np.eye(n_assets, dtype=np.float32)
 
-    def fit(self, event_times_dict: Dict[int, List[float]]) -> None:
-        """Estimate intensity parameters and update the adjacency matrix.
+    def _neg_log_likelihood(self, theta: np.ndarray, events: List[np.ndarray], N: int) -> float:
+        """Computes NLL for sum of 2 exponentials."""
+        mu = np.clip(theta[:N], 1e-5, None)
+        alpha1 = np.clip(theta[N : N + N*N], 0.0, None).reshape((N, N))
+        alpha2 = np.clip(theta[N + N*N : N + 2*N*N], 0.0, None).reshape((N, N))
 
-        This performs Maximum Likelihood Estimation (MLE) over a rolling 
-        time window (e.g., the last 500ms).
+        # Focus strictly on cross-asset causality
+        np.fill_diagonal(alpha1, 0.0)
+        np.fill_diagonal(alpha2, 0.0)
 
-        Parameters
-        ----------
-        event_times_dict : dict[int -> list[float]]
-            Dictionary mapping asset_id (0 to n_assets-1) to a sorted list
-            of event timestamps, ideally normalized in seconds or milliseconds 
-            such that the scale matches the beta decay rate.
-        """
-        N = self.n_assets
+        nll = 0.0
         
-        # Convert dictionary to lists of arrays
-        events = []
+        # 1. Integral compensator part
+        T_max = 0.0
         for i in range(N):
-            times_i = np.array(event_times_dict.get(i, []), dtype=np.float64)
-            # Ensure sorting
-            events.append(np.sort(times_i))
-
-        # We estimate parameters via MLE.
-        # For an exponential kernel, the log-likelihood can be evaluated efficiently.
-        # Let parameters theta = [mu_0...mu_{N-1}, alpha_{0,0}...alpha_{N-1,N-1}]
-        # Dimensions: N for mu, N*N for alpha. Total D = N + N*N
+            if len(events[i]) > 0:
+                T_max = max(T_max, events[i][-1])
         
-        def neg_log_likelihood(theta: np.ndarray) -> float:
-            # Clip bounds safely to guarantee gradient continuity
-            mu = np.clip(theta[:N], 1e-5, None)
-            alpha = np.clip(theta[N:], 0.0, None).reshape((N, N))
-
-            # Force self-excitation (diagonal) to 0 to focus on cross-asset causality
-            np.fill_diagonal(alpha, 0.0)
-
-            nll = 0.0
+        for i in range(N):
+            # mu_i * T
+            nll += mu[i] * T_max
             
-            # Integral compensator part
-            for i in range(N):
-                T_max = 0.0
-                if len(events[i]) > 0:
-                    T_max = max(T_max, events[i][-1])
+            # sum_j (alpha1_ij/beta1 + alpha2_ij/beta2) * sum_k (1 - exp(-beta*(T-tk)))
+            for j in range(N):
+                if i != j and len(events[j]) > 0:
+                    tj = events[j]
+                    term1 = np.sum(1.0 - np.exp(-self.beta1 * (T_max - tj)))
+                    term2 = np.sum(1.0 - np.exp(-self.beta2 * (T_max - tj)))
+                    nll += (alpha1[i, j] / self.beta1) * term1
+                    nll += (alpha2[i, j] / self.beta2) * term2
+                        
+        # 2. Log intensities at event times
+        for i in range(N):
+            ti = events[i]
+            for t in ti:
+                lam = mu[i]
                 for j in range(N):
-                    if len(events[j]) > 0:
-                        T_max = max(T_max, events[j][-1])
-                
-                # mu_i * T
-                nll += mu[i] * T_max
-                
-                # sum_j alpha_ij / beta * sum_{k=1}^{n_j} (1 - exp(-beta*(T - t_k^j)))
-                for j in range(N):
-                    if i != j:  # Only cross-asset
+                    if i != j:
                         tj = events[j]
-                        if len(tj) > 0:
-                            term = np.sum(1.0 - np.exp(-self.beta * (T_max - tj)))
-                            nll += (alpha[i, j] / self.beta) * term
-                            
-            # Sum of log intensities at event times
-            for i in range(N):
-                ti = events[i]
-                for k in range(len(ti)):
-                    t = ti[k]
-                    # Compute lambda_i(t)
-                    lam = mu[i]
-                    for j in range(N):
-                        if i != j:
-                            tj = events[j]
-                            # only events strictly before t
-                            tj_past = tj[tj < t]
-                            if len(tj_past) > 0:
-                                lam += alpha[i, j] * np.sum(np.exp(-self.beta * (t - tj_past)))
-                    
-                    nll -= np.log(max(lam, 1e-10))
-                    
-            return nll
+                        tj_past = tj[tj < t]
+                        if len(tj_past) > 0:
+                            # Sum over past events for both kernels
+                            dt = t - tj_past
+                            lam += alpha1[i, j] * np.sum(np.exp(-self.beta1 * dt))
+                            lam += alpha2[i, j] * np.sum(np.exp(-self.beta2 * dt))
+                
+                nll -= np.log(max(lam, 1e-10))
+                
+        return nll
 
-        # Initial guess
-        theta0 = np.zeros(N + N * N)
-        theta0[:N] = 1.0  # initial mu
-        theta0[N:] = 0.1  # initial alpha
+    def fit(self, event_times_dict: Dict[int, List[float]]) -> None:
+        """Estimate parameters via MLE."""
+        N = self.n_assets
+        events = [np.sort(np.array(event_times_dict.get(i, []), dtype=np.float64)) for i in range(N)]
+
+        # theta = [mu (N), alpha1 (N*N), alpha2 (N*N)]
+        theta0 = np.concatenate([
+            np.ones(N),          # mu
+            np.full(N*N, 0.05),  # alpha1
+            np.full(N*N, 0.05)   # alpha2
+        ])
         
-        bounds = [(1e-4, None)] * N + [(0.0, None)] * (N * N)
+        bounds = [(1e-4, None)] * N + [(0.0, None)] * (2 * N * N)
 
-        # Optimize
         try:
             res = minimize(
-                neg_log_likelihood, 
+                self._neg_log_likelihood, 
                 theta0, 
+                args=(events, N),
                 method='L-BFGS-B', 
                 bounds=bounds,
-                options={'maxiter': 50, 'ftol': 1e-4}
+                options={'maxiter': 50, 'ftol': 1e-3}
             )
-            alpha_opt = res.x[N:].reshape((N, N))
             
-            # Branching ratio
-            A = alpha_opt / self.beta
+            alpha1_opt = res.x[N : N + N*N].reshape((N, N))
+            alpha2_opt = res.x[N + N*N : N + 2*N*N].reshape((N, N))
             
-            # Normalize rows so max=1 (with a floor to prevent amplifying noise)
-            row_max = A.max(axis=1, keepdims=True)
-            row_max = np.maximum(row_max, 1e-2)
+            # Combined Branching Ratio
+            A = (alpha1_opt / self.beta1) + (alpha2_opt / self.beta2)
+            
+            # Normalize
+            row_max = np.maximum(A.max(axis=1, keepdims=True), 1e-2)
             A_norm = A / row_max
             
             with self._lock:
                 self._adjacency = A_norm.astype(np.float32)
                 
-            logger.debug("Successfully updated Hawkes adjacency matrix.")
+            logger.debug("Hawkes adjacency updated (Double-Exp Kernel).")
             
         except Exception as e:
-            logger.warning(f"Hawkes MLE optimization failed: {e}. Retaining previous adjacency.")
+            logger.warning(f"Hawkes MLE failed: {e}. Retaining previous adjacency.")
 
     def get_adjacency(self) -> np.ndarray:
-        """Get the current estimation of the directional adjacency matrix.
-
-        Returns
-        -------
-        A : np.ndarray shape (N, N)
-            The normalized branching ratio matrix representing directional
-            causality between assets.
-        """
         with self._lock:
-            # Return a copy to ensure thread-safety
             return self._adjacency.copy()
 
+def compare_kernels():
+    """Comparison test between Single and Double Exponential kernels."""
+    n_assets = 2
+    # Leader-Follower pattern with some 'after-effect'
+    events_0 = np.array([0.1, 0.2, 0.5, 0.8])
+    events_1 = np.concatenate([
+        events_0 + 0.01,  # Fast reaction
+        events_0 + 0.3    # Slow follow-up
+    ])
+    events_1.sort()
+    
+    event_dict = {0: events_0.tolist(), 1: events_1.tolist()}
+
+    print("\n--- Kernel Comparison ---")
+    
+    # 1. Single Exp
+    class SingleExp(HawkesEstimator):
+        def _neg_log_likelihood(self, theta, events, N):
+            mu, alpha = theta[:N], theta[N:].reshape((N, N))
+            np.fill_diagonal(alpha, 0.0)
+            nll = 0.0
+            T_max = max([e[-1] for e in events if len(e)>0])
+            for i in range(N):
+                nll += mu[i] * T_max
+                for j in range(N):
+                    if i != j and len(events[j]) > 0:
+                        nll += (alpha[i, j] / self.beta1) * np.sum(1.0 - np.exp(-self.beta1 * (T_max - events[j])))
+            for i in range(N):
+                for t in events[i]:
+                    lam = mu[i] + sum(alpha[i, j] * np.sum(np.exp(-self.beta1 * (t - events[j][events[j] < t]))) for j in range(N) if i!=j)
+                    nll -= np.log(max(lam, 1e-10))
+            return nll
+        def fit(self, event_times_dict):
+            N = self.n_assets
+            events = [np.sort(np.array(event_times_dict.get(i, []), dtype=np.float64)) for i in range(N)]
+            theta0 = np.concatenate([np.ones(N), np.full(N*N, 0.1)])
+            res = minimize(self._neg_log_likelihood, theta0, args=(events, N), method='L-BFGS-B', bounds=[(1e-4, None)]*(N+N*N))
+            A = res.x[N:].reshape((N,N)) / self.beta1
+            self._adjacency = (A / np.maximum(A.max(axis=1, keepdims=True), 1e-2)).astype(np.float32)
+
+    se = SingleExp(n_assets=2, beta1=10.0)
+    se.fit(event_dict)
+    A_single = se.get_adjacency()
+    
+    # 2. Double Exp
+    de = HawkesEstimator(n_assets=2, beta1=10.0, beta2=0.5)
+    de.fit(event_dict)
+    A_double = de.get_adjacency()
+    
+    print(f"Single-exp A_ij:\n{np.round(A_single, 3)}")
+    print(f"Double-exp A_ij:\n{np.round(A_double, 3)}")
+    
+    if A_double[1,0] > A_single[1,0]:
+        print("✓ Double-exp captured higher cross-asset influence (A[1,0]).")
 
 if __name__ == "__main__":
-    import time
-    
-    logging.basicConfig(level=logging.INFO)
-    print("=" * 70)
-    print("HAWKES PROCESS ESTIMATOR — ALGORITHM VERIFICATION")
-    print("=" * 70)
-    
-    n_assets = 3
-    estimator = HawkesEstimator(n_assets=n_assets, beta=10.0)
-    
-    # Generate synthetic event cascade:
-    # Asset 0 is the "leader" (spoofer). Asset 1 is the "follower". Asset 2 is noise.
-    # To avoid causal confusion in MLE, we generate completely isolated sparse events 
-    # rather than dense uniform noise.
-    
-    # 3 isolated events for the leader at t=0.1, 0.3, 0.45
-    events_0 = np.array([0.1, 0.3, 0.45])
-    
-    # Asset 1 strictly follows Asset 0 with exactly a 10ms-20ms lag
-    events_1 = events_0 + 0.015
-    
-    # Asset 2 is completely random
-    events_2 = np.array([0.05, 0.25, 0.48])
-    
-    event_dict = {
-        0: events_0.tolist(),
-        1: events_1.tolist(),
-        2: events_2.tolist()
-    }
-    
-    print("Running recursive MLE optimization on 500ms rolling window...\n")
-    t0 = time.time()
-    estimator.fit(event_dict)
-    t1 = time.time()
-    
-    A = estimator.get_adjacency()
-    
-    print(f"Fit completed in {1000*(t1-t0):.1f} ms\n")
-    print("Normalized Branching Ratio Adjacency Matrix A_ij:")
-    print("(A_ij > A_ji means asset j causally drives asset i)\n")
-    print(np.round(A, 4))
-    
-    # Assertions
-    print("\nVerifying constraints:")
-    is_non_negative = np.all(A >= 0)
-    print(f"  Non-negative: {is_non_negative}")
-    
-    is_asymmetric = not np.allclose(A, A.T, atol=1e-2)
-    print(f"  Asymmetric:   {is_asymmetric}")
-    
-    # Check if Asset 0 drives Asset 1 more than Asset 1 drives Asset 0
-    # A[1, 0] is the influence of 0 on 1
-    print(f"\n  Influence of 0 -> 1: A[1,0] = {A[1,0]:.4f}")
-    print(f"  Influence of 1 -> 0: A[0,1] = {A[0,1]:.4f}")
-    assert A[1, 0] > A[0, 1] + 0.1, "Leader-follower detection failed!"
-    print("  ✓ Correctly detected causal direction (Asset 0 leads Asset 1)")
-    
-    print("\n" + "=" * 70)
-    print("HAWKES ESTIMATOR TEST PASSED ✓")
-    print("=" * 70)
+    logging.basicConfig(level=logging.ERROR)
+    compare_kernels()

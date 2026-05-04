@@ -12,7 +12,7 @@ def clean_text(text: Optional[str]) -> str:
     - removing emojis and special Unicode characters
     - lowercasing
     - normalizing and trimming spaces
-    - filtering out text shorter than 20 tokens
+    - filtering out text that is too short to be useful
     """
     if not text:
         return ""
@@ -37,7 +37,7 @@ def clean_text(text: Optional[str]) -> str:
     
     # Final check: Token count (using simple space splitting)
     tokens = text.split()
-    if len(tokens) < 20:
+    if len(tokens) < 5:
         return ""
         
     return text
@@ -80,12 +80,16 @@ def calculate_relevance_score(text: str) -> float:
     
     # Simple count of how many unique keywords appear
     for kw in keywords:
-        if kw in text_lower:
-            # Solana and SOL get much higher weights to ensure they are always kept
+        if re.search(rf"\b{re.escape(kw)}\b", text_lower):
+            # Solana and SOL receive a slightly higher weight than generic terms
             if kw in ["solana", "sol"]:
-                score += 2.0
+                score += 1.5
             else:
                 score += 1.0
+
+    # Long-form articles should still survive even if they do not mention a keyword.
+    if len(text_lower.split()) >= 20:
+        score += 1.0
                 
     return score
 
@@ -105,7 +109,7 @@ def classify_event_type(text: str) -> str:
         "outage/network": ["outage", "restart", "downtime", "congested", "clogged", "halted"],
         "whale": ["whale", "large transaction", "large move", "transfer", "shrimp", "dolphin"],
         "ETF/regulation": ["etf", "sec", "regulation", "lawsuit", "legal", "court", "binance", "coinbase"],
-        "partnership": ["partnership", "partnership", "integrated", "ecosystem", "grant", "collaborated"],
+        "partnership": ["partnership", "partner", "partners", "integrated", "ecosystem", "grant", "collaborated"],
         "market_move": ["crash", "pump", "surge", "plummet", "liquidations", "moon", "dump"]
     }
     

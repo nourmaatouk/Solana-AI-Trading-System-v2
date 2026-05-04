@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from src.config import get_settings
+from src.contracts.layer2_contract import normalize_layer2_bucket_frame
 
 
 def aggregate_sentiment_15m(df: pd.DataFrame) -> pd.DataFrame:
@@ -8,11 +9,24 @@ def aggregate_sentiment_15m(df: pd.DataFrame) -> pd.DataFrame:
     Groups processed sentiment DataFrame into 15-minute intervals.
     Computes means, spreads, ratios, and standardizes source metrics safely.
     """
-    if df.empty or "timestamp" not in df.columns:
+    if df is None or df.empty:
         return pd.DataFrame()
-        
-    df = df.copy()
-        
+
+    if "timestamp" not in df.columns:
+        if "bucket" in df.columns:
+            df = df.rename(columns={"bucket": "timestamp"})
+        else:
+            return pd.DataFrame()
+
+    df = normalize_layer2_bucket_frame(df)
+
+    derived_high_impact = df["event_type"].isin(["hack/security", "outage/network"]).astype(int)
+    if "high_impact_event" not in df.columns:
+        df["high_impact_event"] = derived_high_impact
+    else:
+        df["high_impact_event"] = df["high_impact_event"].fillna(derived_high_impact)
+        df["high_impact_event"] = np.maximum(df["high_impact_event"].astype(int), derived_high_impact.astype(int))
+
     settings = get_settings()
     threshold = settings.SENTIMENT_THRESHOLD
 
@@ -109,3 +123,8 @@ def aggregate_sentiment_15m(df: pd.DataFrame) -> pd.DataFrame:
     agg_df = agg_df.reset_index().rename(columns={"bucket": "timestamp"})
     
     return agg_df
+
+
+def aggregate_sentiment_to_15m(df: pd.DataFrame) -> pd.DataFrame:
+    """Backward-compatible alias used by event-detection tests."""
+    return aggregate_sentiment_15m(df)

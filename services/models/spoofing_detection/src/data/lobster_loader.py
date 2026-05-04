@@ -272,6 +272,60 @@ def generate_synthetic_lobster_data(
     return df
 
 
+def generate_sample_lobster_files(
+    output_dir: str | Path = "data/raw",
+    ticker: str = "AAPL",
+    date: str = "2012-06-21",
+    n_levels: int = 10,
+    n_events: int = 1000,
+):
+    """
+    Generates realistic synthetic LOBSTER-format CSV files as a stand-in.
+    Documented as synthetic-format data for pipeline validation.
+    """
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    msg_file = output_dir / f"{ticker}_{date}_message_{n_levels}.csv"
+    ob_file = output_dir / f"{ticker}_{date}_orderbook_{n_levels}.csv"
+
+    if msg_file.exists() and ob_file.exists():
+        logger.info("Sample LOBSTER files already exist at %s", output_dir)
+        return msg_file, ob_file
+
+    logger.info("Generating synthetic stand-in LOBSTER files at %s...", output_dir)
+    
+    # Generate using realistic distributions requested: mid ~100.0, tick 0.01, size 1-500
+    df = generate_synthetic_lobster_data(
+        n_events=n_events,
+        n_levels=n_levels,
+        base_price=100.0,
+        tick_size=0.01,
+        seed=42
+    )
+
+    # Save Message File (No header)
+    # Time, Type, OrderID, Size, Price, Direction
+    # Price must be multiplied by 10,000 for LOBSTER format
+    msg_df = df[["timestamp", "event_type", "order_id", "size", "price", "direction"]].copy()
+    msg_df["price"] = (msg_df["price"] * 10_000).astype(np.int64)
+    msg_df.to_csv(msg_file, header=False, index=False)
+
+    # Save Orderbook File (No header)
+    # Interleaved: AskPrice1, AskSize1, BidPrice1, BidSize1, ...
+    ob_cols = _orderbook_columns(n_levels)
+    ob_df = df[ob_cols].copy()
+    # Prices must be multiplied by 10,000
+    for col in ob_df.columns:
+        if "price" in col:
+            ob_df[col] = (ob_df[col] * 10_000).astype(np.int64)
+    
+    ob_df.to_csv(ob_file, header=False, index=False)
+
+    logger.info("Successfully created stand-in LOBSTER files (SYNTHETIC FORMAT).")
+    return msg_file, ob_file
+
+
 # ---------------------------------------------------------------------------
 # Convenience: load from directory with LOBSTER naming convention
 # ---------------------------------------------------------------------------
@@ -282,29 +336,37 @@ def load_lobster_from_directory(
     n_levels: int = 10,
     filter_event_types: Optional[list[int]] = None,
 ) -> pd.DataFrame:
-    """Load LOBSTER data using the standard naming convention.
-
-    LOBSTER files follow the pattern:
-        {TICKER}_{DATE}_34200000_57600000_message_{N}.csv
-        {TICKER}_{DATE}_34200000_57600000_orderbook_{N}.csv
-
-    Parameters
-    ----------
-    data_dir : directory containing LOBSTER CSV files.
-    ticker : instrument ticker (e.g., "SOL", "AAPL").
-    date : trading date (e.g., "2024-01-02").
-    n_levels : number of orderbook levels.
-    filter_event_types : event types to keep.
+    """Load LOBSTER data using flexible naming support for samples and production files.
+    
+    Tries multiple naming patterns:
+    1. Standard full prefix: {ticker}_{date}_34200000_57600000_message_{n_levels}.csv
+    2. Sample format: {ticker}_{date}_message_{n_levels}.csv
     """
     data_dir = Path(data_dir)
-    prefix = f"{ticker}_{date}_34200000_57600000"
+    
+    # Pattern 1: Standard prefix
+    prefix_std = f"{ticker}_{date}_34200000_57600000"
+    msg_path_std = data_dir / f"{prefix_std}_message_{n_levels}.csv"
+    ob_path_std = data_dir / f"{prefix_std}_orderbook_{n_levels}.csv"
 
-    msg_path = data_dir / f"{prefix}_message_{n_levels}.csv"
-    ob_path = data_dir / f"{prefix}_orderbook_{n_levels}.csv"
+    # Pattern 2: Short sample prefix
+    msg_path_short = data_dir / f"{ticker}_{date}_message_{n_levels}.csv"
+    ob_path_short = data_dir / f"{ticker}_{date}_orderbook_{n_levels}.csv"
+
+    if msg_path_std.exists() and ob_path_std.exists():
+        m_path, o_path = msg_path_std, ob_path_std
+    elif msg_path_short.exists() and ob_path_short.exists():
+        m_path, o_path = msg_path_short, ob_path_short
+    else:
+        # If neither exists and we are using stand-ins, generate them
+        if ticker == "AAPL" and date == "2012-06-21":
+            m_path, o_path = generate_sample_lobster_files(data_dir, ticker, date, n_levels)
+        else:
+            raise FileNotFoundError(f"LOBSTER files for {ticker} on {date} not found in {data_dir}")
 
     return load_lobster_data(
-        message_path=msg_path,
-        orderbook_path=ob_path,
+        message_path=m_path,
+        orderbook_path=o_path,
         n_levels=n_levels,
         filter_event_types=filter_event_types,
     )

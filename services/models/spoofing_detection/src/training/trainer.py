@@ -487,7 +487,7 @@ if __name__ == "__main__":
     # ── Create dummy data ────────────────────────────────────────────────────
     batch_size = 32
     seq_len = 100
-    d_input = 47
+    d_input = 49
     n_samples = 128
 
     rng = np.random.default_rng(42)

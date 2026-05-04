@@ -17,6 +17,7 @@ try:
     from src.processing.sentiment_pipeline import process_articles
     from src.models.finbert_wrapper import FinBertSentimentAnalyzer
     from src.aggregation.feature_aggregator import aggregate_sentiment_15m
+    from src.contracts.layer2_contract import normalize_layer2_bucket_frame, BUCKET_DEFAULTS
 except ImportError:
     # If standard imports fail due to path structure, try relative to models
     sys.path.append(str(PROJECT_ROOT / "nlp"))
@@ -31,10 +32,12 @@ CACHE_PATH = BASE_DIR / "data" / "realtime" / "processed_urls.txt"
 REQUIRED_COLUMNS = [
     "timestamp", "sentiment_mean", "sentiment_std", "news_volume",
     "positive_ratio", "negative_ratio", "neutral_ratio",
-    "max_confidence", "gdelt_volume", "rss_volume",
-    "gdelt_sentiment", "rss_sentiment", "sentiment_spike",
-    "event_count", "high_impact_event", "relevance_weighted_sentiment", 
-    "sentiment_momentum", "news_volume_change"
+    "strong_positive_ratio", "strong_negative_ratio",
+    "max_confidence", "event_count", "negative_event_count",
+    "positive_event_count", "high_impact_event_count", "high_impact_event",
+    "relevance_weighted_sentiment", "event_signal_mean", "event_signal_sum",
+    "gdelt_volume", "rss_volume", "gdelt_sentiment", "rss_sentiment",
+    "sentiment_momentum", "news_volume_change", "sentiment_spike"
 ]
 
 DECAY_FACTOR = 0.5  # Decay sentiment by 50% if no new news
@@ -44,7 +47,7 @@ def create_zero_row() -> pd.DataFrame:
     now = pd.Timestamp.now(tz="UTC").floor("15min")
     data = {col: [0.0] for col in REQUIRED_COLUMNS}
     data["timestamp"] = [now]
-    return pd.DataFrame(data)
+    return normalize_layer2_bucket_frame(pd.DataFrame(data))
 
 def get_decayed_row() -> pd.DataFrame:
     """
@@ -79,8 +82,8 @@ def get_decayed_row() -> pd.DataFrame:
                 row[col] = 0.0
                 
         row["timestamp"] = pd.Timestamp.now(tz="UTC").floor("15min")
-        
-        return pd.DataFrame([row])
+
+        return normalize_layer2_bucket_frame(pd.DataFrame([row]))
     except Exception as e:
         print(f"Decay error: {e}")
         return create_zero_row()
@@ -143,14 +146,14 @@ def main():
                     df_final = get_decayed_row()
                 else:
                     # Take only the latest bucket
-                    df_final = df_aggregated.sort_values("timestamp").tail(1).copy()
+                    df_final = normalize_layer2_bucket_frame(df_aggregated.sort_values("timestamp").tail(1).copy())
 
         # 4. Final Format Check
         for col in REQUIRED_COLUMNS:
             if col not in df_final.columns:
                 df_final[col] = 0.0
         
-        df_final = df_final[REQUIRED_COLUMNS]
+        df_final = normalize_layer2_bucket_frame(df_final)[REQUIRED_COLUMNS]
 
         # 5. Save Output
         OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)

@@ -1,0 +1,2 @@
+epoch,lr,train_loss,train_f1,train_precision,train_recall,val_loss,val_f1,val_precision,val_recall,elapsed_s
+1,0.000000,0.6779,0.0000,0.0000,0.0000,0.7946,0.0000,0.0000,0.0000,0.54

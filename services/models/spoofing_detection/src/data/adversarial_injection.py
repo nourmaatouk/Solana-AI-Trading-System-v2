@@ -339,7 +339,7 @@ class AdversarialInjector:
 
         if len(all_X) == 0:
             # Return empty arrays with correct shapes
-            n_feat = 47  # default
+            n_feat = 49  # default
             return (
                 np.zeros((0, labeler.window_length, n_feat), dtype=np.float32),
                 np.zeros(0, dtype=np.int64),
@@ -359,7 +359,7 @@ class AdversarialInjector:
         self,
         n_sequences: int = 4000,
         window_length: int = 100,
-        n_features: int = 47,
+        n_features: int = 49,
     ) -> Tuple[np.ndarray, np.ndarray]:
         n_spoof = int(n_sequences * 0.4)
         n_legit = int(n_sequences * 0.4)

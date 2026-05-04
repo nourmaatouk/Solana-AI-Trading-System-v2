@@ -1,0 +1,70 @@
+Training set small (221 samples). Statistical significance may be limited.
+Test set small (48 samples). Performance metrics may have high variance.
+Very few positive samples in test set (10). Recall metrics will be unreliable.
+================================================================================
+TRAINING TEN SPOOFING DETECTOR ON KAGGLE DATA
+================================================================================
+
+[1] Loading BTC 1min data...
+    Max rows: 50,000
+
+    Shape: (341, 100, 23)
+    Spoofing rate: 22.0%
+
+[2] Creating train/val/test splits...
+    TRAIN: 221 samples (49 spoofing)
+    VAL: 72 samples (16 spoofing)
+    TEST: 48 samples (10 spoofing)
+
+[3] Creating DataLoaders (batch_size=32)...
+
+[4] Building TEN model...
+    Input features: 23
+    Sequence length: 100
+    Total parameters: 4,761,795
+
+[5] Training configuration...
+    Epochs: 30
+    Learning rate: 0.0005
+    Device: cpu
+    Checkpoint dir: ./checkpoints/kaggle_btc_1min
+
+[6] Starting training...
+    Training set: 221 samples
+    Validation set: 72 samples
+
+[7] Loading best model and evaluating...
+
+================================================================================
+✅ TRAINING COMPLETE
+================================================================================
+
+Best Validation Metrics (Epoch 10):
+  F1:        0.6818
+  Precision: 0.5357
+  Recall:    0.9375
+  Loss:      0.4882
+
+Test Set Metrics:
+  F1:        0.2424
+  Precision: 0.1739
+  Recall:    0.4000
+  Loss:      0.6720
+
+📊 Improvement vs Synthetic (Expected):
+  F1: 0.80 → 0.24 (actual)
+  Precision: 0.81 → 0.17
+  Recall: 0.77 → 0.40
+
+💾 Model saved to: ./checkpoints/kaggle_btc_1min/best_model.pt
+📈 Logs saved to: training_log_kaggle_btc_1min.csv
+
+================================================================================
+SUMMARY
+================================================================================
+Asset: BTC
+Frequency: 1min
+Total samples: 341
+Training epochs: 10
+Best validation F1: 0.6818
+Test F1: 0.2424
