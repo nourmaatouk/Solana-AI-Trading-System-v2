@@ -1,0 +1,45 @@
+cat > .gitignore <<'EOF'
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+ml_env/
+
+# Data
+data/
+datasets/
+*.csv
+*.npy
+*.npz
+*.parquet
+*.zip
+
+# ML models / checkpoints
+checkpoints/
+*.pt
+*.pth
+*.pkl
+*.joblib
+*.onnx
+*.h5
+
+# Node
+node_modules/
+
+# Logs/cache
+*.log
+.cache/
+.ipynb_checkpoints/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+EOF
