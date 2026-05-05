@@ -31,27 +31,27 @@ This is an enterprise-grade trading system that:
 │ Layer 6: API & Dashboard (apps/)                            │
 │ FastAPI Backend + React Frontend + SHAP Explainability      │
 └─────────────────────────────────────────────────────────────┘
-                              ↓
+                              ↑
 ┌─────────────────────────────────────────────────────────────┐
 │ Layer 4-5: Agent Layer + Execution (apps/agent, services/)  │
 │ ElizaOS Orchestrator + Jupiter/Raydium/Jito Routing         │
 └─────────────────────────────────────────────────────────────┘
-                              ↓
+                              ↑
 ┌─────────────────────────────────────────────────────────────┐
 │ Layer 3: AI Models (services/models/)                       │
 │ TEN, GNN, XGBoost, FinBERT, PPO, Fusion Layer               │
 └─────────────────────────────────────────────────────────────┘
-                              ↓
+                              ↑
 ┌─────────────────────────────────────────────────────────────┐
 │ Infrastructure (packages/db/, infra/)                       │
 │ TimescaleDB, Redis, ChromaDB, Docker, K8s, Terraform        │
 └─────────────────────────────────────────────────────────────┘
-                              ↓
+                              ↑
 ┌─────────────────────────────────────────────────────────────┐
 │ Layer 2: Data Processing (services/processing/)             │
 │ Features, Pipelines, Normalization, Sequencing              │
 └─────────────────────────────────────────────────────────────┘
-                              ↓
+                              ↑
 ┌─────────────────────────────────────────────────────────────┐
 │ Layer 1: Data Ingestion (services/ingest/)                  │
 │ Binance, OpenBook, Helius, Reddit, Cross-Asset Feeds        │
