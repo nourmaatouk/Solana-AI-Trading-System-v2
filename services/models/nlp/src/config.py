@@ -35,6 +35,17 @@ class Settings(BaseSettings):
     RAW_DIR: str = "data/raw"
     TIMEFRAME_MINUTES: int = 15
 
+    # Redis Cache
+    REDIS_URL: str = "redis://localhost:6379/0"
+    REDIS_TTL_SECONDS: int = 3600
+
+    # TimescaleDB
+    TIMESCALE_DSN: str = "postgresql://postgres:password@localhost:5432/trading"
+
+    # Reddit Fetcher
+    REDDIT_SUBREDDITS: List[str] = ["solana", "CryptoCurrency", "CryptoMarkets"]
+    REDDIT_FETCH_ENABLED: bool = True
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -42,7 +53,7 @@ class Settings(BaseSettings):
         enable_decoding=False
     )
 
-    @field_validator("RSS_FEEDS", "GDELT_KEYWORDS", mode="before")
+    @field_validator("RSS_FEEDS", "GDELT_KEYWORDS", "REDDIT_SUBREDDITS", mode="before")
     def split_comma_separated_strings(cls, value: Union[str, List[str]]) -> List[str]:
         """Convert comma-separated strings from env vars into lists."""
         if isinstance(value, str):

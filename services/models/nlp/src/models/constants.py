@@ -1,0 +1,12 @@
+FINBERT_MODEL_NAME = "ProsusAI/finbert"
+FINBERT_MAX_TOKENS = 512
+
+# XGBoost walk-forward validation
+WF_N_SPLITS = 5
+WF_MIN_TRAIN_RATIO = 0.5
+WF_MIN_TRAIN_ABS = 30
+
+# Class label indices for ProsusAI/finbert output
+FINBERT_LABEL_POSITIVE = 0
+FINBERT_LABEL_NEGATIVE = 1
+FINBERT_LABEL_NEUTRAL = 2

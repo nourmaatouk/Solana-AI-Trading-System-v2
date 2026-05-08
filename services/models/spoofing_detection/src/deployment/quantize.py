@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import logging
 import time
+import numpy as np
+import copy
 from pathlib import Path
 from src.models.ten_gnn import TENGNNModel
 from src.evaluation.metrics import compute_point_metrics
@@ -28,8 +30,42 @@ def evaluate_model(model, data_loader, device="cpu"):
             all_labels.extend(y.cpu().numpy())
     latency = (time.perf_counter() - t0) * 1000 / len(all_labels)
     
-    metrics = compute_point_metrics(all_labels, all_preds)
+    metrics = compute_point_metrics(np.asarray(all_labels), np.asarray(all_preds))
     return metrics, latency
+
+
+def quantize_deployment_safe_modules(model: TENGNNModel) -> TENGNNModel:
+    """Apply dynamic INT8 quantization only where PyTorch supports it safely.
+
+    Quantizing ``nn.TransformerEncoder`` internals currently breaks the
+    transformer fast path in this environment. The deployment-safe path keeps
+    the temporal transformer in FP32 and quantizes the surrounding linear
+    projections, graph encoder linears, and final classifier head.
+    """
+    quantized_model = copy.deepcopy(model).cpu().eval()
+
+    quantized_model.ten_encoder.input_projection = torch.quantization.quantize_dynamic(
+        quantized_model.ten_encoder.input_projection,
+        {nn.Linear},
+        dtype=torch.qint8,
+    )
+    quantized_model.ten_encoder.classifier = torch.quantization.quantize_dynamic(
+        quantized_model.ten_encoder.classifier,
+        {nn.Linear},
+        dtype=torch.qint8,
+    )
+    quantized_model.gnn_encoder = torch.quantization.quantize_dynamic(
+        quantized_model.gnn_encoder,
+        {nn.Linear},
+        dtype=torch.qint8,
+    )
+    quantized_model.classifier = torch.quantization.quantize_dynamic(
+        quantized_model.classifier,
+        {nn.Linear},
+        dtype=torch.qint8,
+    )
+
+    return quantized_model
 
 def run_quantization(checkpoint_path: Path, output_path: Path):
     from src.data.dataset import prepare_data, create_dataloaders
@@ -55,11 +91,10 @@ def run_quantization(checkpoint_path: Path, output_path: Path):
     logger.info(f"FP32 F1: {f1_fp32:.4f}, Latency: {lat_fp32:.4f} ms/seq")
     
     # 4. Apply Quantization
-    # We quantize the linear layers in the whole hybrid model for maximum gain
+    # Quantize only deployment-safe modules. Full Transformer dynamic
+    # quantization is not stable in this PyTorch/runtime combination.
     logger.info("Applying torch.quantization.quantize_dynamic...")
-    quantized_model = torch.quantization.quantize_dynamic(
-        model, {nn.Linear}, dtype=torch.qint8
-    )
+    quantized_model = quantize_deployment_safe_modules(model)
     
     # 5. Quantized Metrics
     logger.info("Measuring Quantized (INT8) performance...")

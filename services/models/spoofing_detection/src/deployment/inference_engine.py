@@ -2,6 +2,7 @@ import time
 import torch
 import logging
 from pathlib import Path
+from typing import Tuple
 from src.models.ten_gnn import TENGNNModel
 
 logger = logging.getLogger(__name__)
@@ -26,6 +27,18 @@ def benchmark_inference(model, input_tensor, adj_tensor, name="Model", iteration
     logger.info(f"{name} Average Latency: {avg_latency:.4f} ms")
     return avg_latency
 
+
+def compile_torchscript_model(
+    model: torch.nn.Module,
+    example_inputs: Tuple[torch.Tensor, torch.Tensor],
+) -> torch.jit.ScriptModule:
+    """Compile model for deployment, falling back to trace if scripting fails."""
+    try:
+        return torch.jit.script(model)
+    except Exception as exc:
+        logger.warning("torch.jit.script failed; falling back to torch.jit.trace: %s", exc)
+        return torch.jit.trace(model, example_inputs, strict=False)
+
 def export_torchscript(model_path: Path, output_path: Path):
     """Exports the TEN-GNN model to TorchScript."""
     device = torch.device("cpu") # Benchmarking on CPU as requested
@@ -43,8 +56,9 @@ def export_torchscript(model_path: Path, output_path: Path):
     logger.info("Comparing Eager vs TorchScript...")
     eager_lat = benchmark_inference(model, input_tensor, adj_tensor, name="Eager Mode")
     
-    # Scripting
-    scripted_model = torch.jit.script(model)
+    # Compile. Script is preferred, trace fallback supports the fixed-shape
+    # low-latency deployment path used by this benchmark command.
+    scripted_model = compile_torchscript_model(model, (input_tensor, adj_tensor))
     scripted_lat = benchmark_inference(scripted_model, input_tensor, adj_tensor, name="TorchScript Mode")
     
     speedup = eager_lat / scripted_lat

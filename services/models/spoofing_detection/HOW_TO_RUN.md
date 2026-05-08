@@ -2,7 +2,13 @@
 
 The core single-asset LOB spoofing detection logic (the data pipeline, TEN model, and trainer loop) is completely functional and can be tested immediately using built-in synthetic data.
 
-Run the following commands from the project root (`/home/nourmaatouk/Solana-AI-Trading-System/services/models/spoofing_detection`):
+Run the following commands from the spoofing module directory:
+
+```bash
+cd /home/nourmaatouk/Solana-AI-Trading-System/services/models/spoofing_detection
+```
+
+If you run these commands from the repository root, Python will not find the local `src` package unless you set `PYTHONPATH`.
 
 ### 1. Run the Data Pipeline Smoke Test
 This validates the entire data pipeline. It generates 5,000 synthetic LOBSTER events, extracts 47 features, applies the L(t) temporal labels, and injects 100 synthetic spoofing sequences (layering and flipping).
@@ -32,14 +38,30 @@ Once you are ready to evaluate real data:
 2. The pipeline will automatically route through `load_lobster_data()` strictly adapting to your actual orderbook data.
 
 ### 4. Deployment & Optimization
-To prepare the model for production HFT environments:
+To prepare benchmark/export artifacts:
 
 **TorchScript Export (Latency Benchmark)**
 ```bash
 python3 -m src.deployment.inference_engine
 ```
 
+Output:
+
+```text
+checkpoints/ten_gnn_scripted.pt
+```
+
+The exporter prefers `torch.jit.script` and falls back to `torch.jit.trace` if the runtime cannot script the model. Always compare the printed latency numbers on your machine; TorchScript is an export format here, not a guaranteed speedup.
+
 **Dynamic Quantization (INT8 Optimization)**
 ```bash
 python3 -m src.deployment.quantize
 ```
+
+Output:
+
+```text
+checkpoints/ten_gnn_int8.pt
+```
+
+The quantizer keeps the Transformer encoder in FP32 and applies dynamic INT8 quantization only to deployment-safe linear blocks around the temporal encoder, graph encoder, and classifier head. This avoids the PyTorch Transformer runtime failure caused by quantizing Transformer internals directly.

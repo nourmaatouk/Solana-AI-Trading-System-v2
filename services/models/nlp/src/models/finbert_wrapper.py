@@ -8,13 +8,16 @@ class FinBertSentimentAnalyzer:
     """
     Wrapper around ProsusAI/finbert to extract sentiment scores from financial and crypto text.
     Handles neutral edgecases and formats outputs safely.
+    Automatically uses CUDA if available, falling back to CPU.
     """
 
     def __init__(self, model_name: str = "ProsusAI/finbert"):
-        # ProsusAI/finbert class labels mapping natively: 
+        # ProsusAI/finbert class labels mapping natively:
         # 0 -> positive, 1 -> negative, 2 -> neutral
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForSequenceClassification.from_pretrained(model_name)
+        self.model = self.model.to(self.device)
         self.model.eval()
 
     def _empty_sentiment(self) -> Dict:
@@ -38,8 +41,9 @@ class FinBertSentimentAnalyzer:
             return_tensors="pt",
             padding=True,
             truncation=True,
-            max_length=512
+            max_length=512,
         )
+        inputs = {k: v.to(self.device) for k, v in inputs.items()}
 
         with torch.no_grad():
             outputs = self.model(**inputs)

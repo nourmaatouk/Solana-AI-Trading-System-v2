@@ -45,6 +45,9 @@ def test_processed_snapshot_integrity():
     assert not np.isnan(snapshot["mid_price"])
     assert not np.isnan(snapshot["imbalance"])
 
+    # 4. Timestamp is UTC-aware so it aligns with market candles
+    assert snapshot["timestamp"].tzinfo is not None
+
 def test_aggregation_logic():
     collector = OrderBookCollector(top_n=5)
     # Mock some raw updates

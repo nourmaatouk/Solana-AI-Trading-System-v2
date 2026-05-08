@@ -16,8 +16,14 @@ pandas>=1.5.0          # Data manipulation and structing for aggregations
 # Configuration
 python-dotenv>=1.0.0     # Loading environment variables from .env files
 pydantic-settings>=2.0.0 # Validating and managing application configurations
-xgboost
+
+# ML Training
+xgboost>=1.7.0
 scikit-learn>=1.0.0
+
+# Storage
+redis>=4.5.0           # Redis cache client
+psycopg2-binary>=2.9.0 # PostgreSQL / TimescaleDB client
 
 # Testing
 pytest>=7.3.0          # Unit testing framework

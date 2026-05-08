@@ -4,7 +4,7 @@ import os
 import time
 import pandas as pd
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 import websockets
 
@@ -57,7 +57,7 @@ class OrderBookCollector:
         imbalance = self.calculate_imbalance(bids, asks)
         
         return {
-            "timestamp": datetime.now(),
+            "timestamp": datetime.now(timezone.utc),
             "mid_price": mid_price,
             "spread": spread,
             "imbalance": imbalance,

@@ -6,13 +6,31 @@ from typing import Dict, Tuple
 from sklearn.metrics import precision_recall_fscore_support
 
 def compute_point_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
-    """Compute base classification metrics."""
-    assert y_pred.max() <= 1, "Predictions must be thresholded or probabilities <= 1"
-    
-    # threshold if raw probs
-    if y_pred.dtype.kind == 'f':
-        y_pred = (y_pred > 0.5).astype(int)
-        
+    """Compute base binary classification metrics.
+
+    Accepts Python lists, binary labels, 1-D spoofing probabilities, or 2-D
+    class probability/logit arrays. The deployment code often accumulates
+    predictions in lists, so the conversion happens here at the contract edge.
+    """
+    y_true = np.asarray(y_true).reshape(-1).astype(int)
+    y_pred = np.asarray(y_pred)
+
+    if y_pred.ndim == 2:
+        if y_pred.shape[1] == 1:
+            y_pred = y_pred.reshape(-1)
+        else:
+            y_pred = y_pred.argmax(axis=1)
+    else:
+        y_pred = y_pred.reshape(-1)
+
+    if y_pred.dtype.kind == "f":
+        if np.nanmin(y_pred) < 0.0 or np.nanmax(y_pred) > 1.0:
+            y_pred = (y_pred > 0.0).astype(int)
+        else:
+            y_pred = (y_pred > 0.5).astype(int)
+    else:
+        assert y_pred.max() <= 1, "Predictions must be binary labels or probabilities"
+
     p, r, f, _ = precision_recall_fscore_support(
         y_true, y_pred, average='binary', pos_label=1, zero_division=0
     )

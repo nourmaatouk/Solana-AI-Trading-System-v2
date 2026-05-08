@@ -42,7 +42,7 @@ class GdeltFetcher:
                 print(f"GDELT Fetch Attempt {attempt + 1}/{max_retries}...")
                 response = requests.get(self.base_url, params=params, headers=headers, timeout=15)
                 
-                print(f"DEBUG: Status={response.status_code} URL={response.url}")
+                print(f"DEBUG: Status={response.status_code} URL={getattr(response, 'url', self.base_url)}")
                 
                 if response.status_code == 429:
                     wait_time = (attempt + 1) * 5

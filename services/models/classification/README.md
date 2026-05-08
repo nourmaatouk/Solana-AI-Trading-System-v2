@@ -1,121 +1,235 @@
-# ⚡ Solana (SOL/USDT) AI Classification Engine
+# Solana Classification Engine
 
-## 📊 Performance Summary (Post-Audit)
-Following a deep technical audit of the pipeline, the classification engine has been upgraded to a high-alpha **Triple-Barrier** architecture.
-*   **Target Horizon**: 4-Hour (H4) Trend Breakouts.
-*   **Predictive Accuracy**: **64.2%**
-*   **Inference Edge (AUC)**: **0.619** (Significantly outperforms random walk).
-*   **Core Model**: XGBoost (Extreme Gradient Boosting) with Alpha-Stationary Features.
+This folder contains the SOL/USDT classification pipeline. The current production-style path trains an XGBoost classifier on 15-minute candles, technical features, optional sentiment/orderbook features, and a triple-barrier target. At runtime, the model is used as a probability scorer, not as an always-trade bot.
 
----
+The safest interpretation is:
 
-## 📂 Master Blueprint: How the Code Works
+```text
+market + sentiment + orderbook features
+  -> XGBoost probability score
+  -> feature/data-health checks
+  -> UP, DOWN, or NEUTRAL
+```
 
-### 📂 1. `01_collect_sol_data_15m.py` (The Collector)
-**Core Logic**: Progressive Historical Ingestion
-- **Library**: `ccxt` (Binance API).
-- **Mechanism**: Use a `while True` loop that fetches OHLCV candles in batches of 500. It uses the `since` parameter (`last_ts + 15m`) to ensure there are no gaps in the data from 2021 to today.
-- **Labels (Standard)**: It creates a basic `target_direction` by comparing the current price to the price exactly 4 candles ahead.
-- **Resilience**: Includes a `fetch_ohlcv_with_retries` wrapper with a 30s timeout and 5-attempt retry logic to handle Binance rate limits.
+`NEUTRAL` is an expected outcome. The system should refuse to guess when confidence is low, trained features are missing, or live orderbook data is stale.
 
-### 📂 2. `02_build_technical_features.py` (The Feature Lab)
-**Core Logic**: Non-Stationary to Stationary Transformation
-- **Alpha Features (The Z-Scores)**: Calculates a 72-period (18 hour) rolling mean and std. **Formula**: `(Price - Mean) / Std`. This creates a stationary "oscillator" that tells the model how overextended the price is, regardless of if SOL is at $20 or $200.
-- **Technical Indicators**:
-    - **RSI**: Standard momentum tracking.
-    - **Trend Alignment**: Measures the spread between the `EMA_10` and `SMA_50` relative to the price.
-    - **Volatility**: Tracks rolling 12/24/48 period standard deviation of returns.
+## Important Horizon Note
 
-### 📂 3. `06b_merge_orderbook_features.py` (The Fusion Layer)
-**Core Logic**: High-Frequency L2 Alignment
-- **Resampling**: Takes sub-minute orderbook snapshots (Imbalance, Spread) and uses `df.groupby().mean()` to bucket them into 15-minute intervals.
-- **Joining**: Uses a `left join` on the `timestamp` column to attach Orderbook features to the Technical/Sentiment master table.
-- **Safety**: Automatically fills missing orderbook data with 0 (using `.fillna(0)`) to maintain matrix consistency for XGBoost.
+All horizons are measured in 15-minute candles:
 
-### 📂 4. `07_prepare_no_leak_data.py` (The Brain & Target Engine)
-**Core Logic**: Triple-Barrier Labeling & Air-Gapping
-- **Triple-Barrier Algorithm**: 
-    - Uses `.rolling(horizon).max()` and `.min()` to look into the future.
-    - It maps every chart point to a probability of hitting a **2.0% Take Profit** before a **1.5% Stop Loss**.
-    - If neither is hit (sideways chop) or both are hit (extreme flash-volatility), it drops the row (`dropna`). This is why you see "Dropped 147k rows"—this is the model focusing purely on high-alpha breakout patterns.
-- **Leakage Prevention**: Uses a regex-style purge to drop any column containing `future`, `target`, or `t+1`.
+| Code | Candles | Wall-clock horizon |
+| --- | ---: | --- |
+| H4 | 4 | 1 hour |
+| H8 | 8 | 2 hours |
+| H16 | 16 | 4 hours |
 
-### 📂 5. `08_train_xgboost_no_leak.py` (The Trainer)
-**Core Logic**: Regularized Gradient Boosting
-- **Objective**: `binary:logistic`.
-- **Early Stopping**: Monitored against the `validation_logloss`. Training terminates if the validation set stops improving for 20 continuous rounds.
-- **Evaluation**: Outputs a Comparison Table (H4 vs H8 vs H16) so you can identify which horizon has the most predictive power (currently H4).
-- **Asset Saving**: Saves the trained `StandardScaler` and `.json` model weights.
+So `H4` does not mean four hours in this codebase. For a true four-hour target, use `H16`.
 
-### 📂 6. `binance_orderbook.py` (The Live Streamer)
-**Core Logic**: Asynchronous WebSocket Feed
-- **Protocol**: `websockets` (WSS).
-- **Auto-Healing**: The entire `async with` block is wrapped in a `while True` loop. If Binance disconnects, it triggers an **Exponential Backoff**: it waits 1s, then 2s, then 4s... up to 60s to attempt a reconnection.
-- **Aggregation**: It buffers 100ms snapshots and calculates the "Orderbook Imbalance" (Bids vs Asks) in RAM before flushing to CSV every 60 seconds.
+## Main Files
 
-### 📂 7. `realtime_predictor.py` (The Execution Shield)
-**Core Logic**: Guarded Production Inference
-- **Alignment**: Loads the `feature_columns.json` registry created during training. It reindexes the live data to ensure every column is in the exact order the model expects.
-- **Safety Fallback**: Counts the number of `NaN` or `missing` features. 
-- **Threshold**: If over **15%** of features are missing, it refuses to trade and prints: `FINAL SIGNAL: NEUTRAL (INSUFFICIENT DATA)`.
-- **Final Output**: Prints the raw probability (e.g., Probability UP: 0.7420) and the final binary signal.
+| File | Purpose |
+| --- | --- |
+| `01_collect_sol_data_15m.py` | Downloads historical SOL/USDT 15m OHLCV candles from Binance. |
+| `02_build_technical_features.py` | Builds RSI, MACD, volatility, z-score, trend, volume, and candle-structure features. |
+| `06_merge_sentiment_features.py` | Compatibility/helper layer for merging sentiment with technical features. The current main path mostly passes technical data through unless a sentiment file is explicitly supplied to `merge_features`. |
+| `06b_merge_orderbook_features.py` | Merges historical/replayed orderbook features onto the training dataset. |
+| `07_prepare_no_leak_data.py` | Builds triple-barrier labels, removes leakage columns, splits chronologically, scales using train only, and writes H4/H8/H16 arrays. |
+| `08_train_xgboost_no_leak.py` | Trains XGBoost models for H4/H8/H16 and writes model artifacts. |
+| `realtime_market_fetcher.py` | Fetches the latest SOL/USDT 15m candles. |
+| `realtime_feature_builder.py` | Builds live technical features using the same naming as the training feature builder. |
+| `realtime_sentiment_fetcher.py` | Fetches/aggregates live sentiment, with a decayed fallback row. |
+| `realtime_merge_features.py` | Merges live technical, sentiment, and orderbook features. Adds `orderbook_data_available`. |
+| `realtime_predictor.py` | Loads the H4 scaler/model, validates the feature contract, scores the latest row, and gates the final signal. |
+| `run_realtime_pipeline.py` | Runs one full 15-minute realtime classification cycle and writes a run log. |
+| `22_realtime_classifier_dashboard.py` | Generates a small static HTML dashboard for testing the classifier visually. |
 
----
+Full architecture notes are in [docs/classification_pipeline_report.md](docs/classification_pipeline_report.md).
 
-## 📈 Horizon Benchmarks
-| Horizon | ACC | AUC | Status |
-| :--- | :--- | :--- | :--- |
-| **H4 (4 Hours)** | **64.2%** | **0.619** | 🔥 **PROD READY** |
-| H8 (8 Hours) | 62.2% | 0.577 | Experimental |
-| H16 (16 Hours) | 57.3% | 0.537 | Low Signal |
+## Historical Training Workflow
 
----
+Run from the repository root:
 
-## 🚀 Retraining Workflow
-1. `python 01_collect_sol_data_15m.py`
-2. `python 02_build_technical_features.py`
-3. `python 06_merge_sentiment_features.py` (NLP fusion)
-4. `python 06b_merge_orderbook_features.py` (LOB fusion)
-5. `python 07_prepare_no_leak_data.py` (Labeling & Split)
-6. `python 08_train_xgboost_no_leak.py` (Inference Generation)
+```bash
+python services/models/classification/01_collect_sol_data_15m.py
+python services/models/classification/02_build_technical_features.py
+python services/models/classification/06_merge_sentiment_features.py
+python services/models/classification/06b_merge_orderbook_features.py
+python services/models/classification/07_prepare_no_leak_data.py
+python services/models/classification/08_train_xgboost_no_leak.py
+```
 
----
+Expected key outputs:
 
-## 💡 The "Simple English" Guide (For Non-Traders)
-If you aren't a math or trading expert, here is the "human" version of how this AI works:
+```text
+services/models/classification/data/processed/feature_columns.json
+services/models/classification/data/processed/scaler_h4.pkl
+services/models/classification/data/processed/scaler_h8.pkl
+services/models/classification/data/processed/scaler_h16.pkl
+services/models/models/xgboost_h4.json
+services/models/models/xgboost_h8.json
+services/models/models/xgboost_h16.json
+```
 
-### 1. Gathering the Ingredients (Data Collection)
-Think of the AI like a chef who needs to know exactly what the price of Solana has been for 4 years. It acts like a polite assistant that asks the market (Binance) for small batches of data until it has a perfect, gap-free history.
+`07_prepare_no_leak_data.py` fits the scaler on training rows only, then transforms validation/test rows. This is important for avoiding train/test leakage.
 
-### 2. The "Relative Temperature" Trick (Z-Scores)
-Imagine trying to teach a child that "70 degrees is hot." In the Arctic, it's boiling; in the Sahara, it's freezing. 
-*   **The AI Problem**: If Solana is $200 today, it's "hotter" than when it was $20, but the patterns stay the same.
-*   **Our Solution**: Instead of telling the AI the exact price, we tell it: **"The price is 2 degrees hotter than it was an hour ago."** By using these "relative" changes, the AI understands the market patterns whether the coin is cheap or expensive.
+## Target Definition
 
-### 3. The Bodyguard (The Predictor)
-Imagine a bodyguard who only lets you cross the street if they have a clear view of both directions. 
-*   If the internet lags or a news feed goes down, the AI doesn't have a clear "vision." 
-*   **Our Solution**: The code counts how much info it has. If it's missing more than 15% of its "vision," it says: **"Stop! I don't see enough to be safe. We are staying Neutral today."** This protects your money from "hallucinated" guesses.
+The current no-leak target is a triple-barrier label:
 
-### 4. The "Win or Lose" Test (Triple Barrier)
-Instead of guessing if the price will be "higher or lower" (which is like flipping a coin), we train the AI like a high-performance athlete:
-*   We only show it patterns that led to a **Clean Win (+2% Profit)** or a **Clean Loss (-1.5% Drop)**. 
-*   We delete all the "boring" sideways motion. This forces the AI to only learn what a **big winning breakout** looks like.
+- `1`: the future window hits a +2.0% take-profit barrier without also hitting the -1.5% stop-loss barrier.
+- `0`: the future window hits a -1.5% stop-loss barrier without also hitting the +2.0% take-profit barrier.
+- rows where both barriers or neither barrier are hit are dropped from the training set.
 
-#### 🎯 Why +2.0% exactly? (The Logic of Profit)
-We chose a **+2.0% Take Profit** and a **-1.5% Stop Loss** for four specific reasons:
-1.  **Filtering Noise**: Solana jumps 0.5% randomly all day. 2% is a "real" move that requires a genuine pattern to achieve.
-2.  **Positive Math**: Your "Win" (+2%) is bigger than your "Risk" (-1.5%). This ensures you can grow your account even if the AI isn't right every single time.
-3.  **Covering Fees**: Trading costs money (Exchange fees). A 2% move is large enough that fees won't eat your profits.
-4.  **Solana’s Personality**: Solana is fast and volatile. It hits 2% "sprints" very often—we are just teaching the AI to catch the start of those sprints.
+This means the model is not asking, "Will price always go up or down?" It is asking, "Does this setup look more like a clean upside breakout or a downside/risk setup over the chosen horizon?"
 
-### 5. Open-Source Detective (XGBoost)
-The "Brain" (XGBoost) is a detective that looks at thousands of past situations. It eventually figures out the recipe: *"Whenever the price is 'relative hot' and there are more buyers than sellers, there is a 64% chance we win in the next 4 hours."*
+## Realtime Inference Workflow
 
----
+The realtime path expects fresh market features and fresh orderbook features.
 
-## 🔮 Roadmap
-- [ ] **Volatility-Adjusted Barriers**: Use ATR to set dynamic TP/SL levels.
-- [ ] **SHAP Interpretation**: Identify which sentiment keywords most influence breakouts.
-- [ ] **GNN Pre-Processing**: Use the Graph Neural Network to pre-filter L2 Orderbook signals.
-- [ ] **Execution Engine**: Connection to full automated execution stack.
+One-command live cycle:
+
+```bash
+python services/models/classification/run_realtime_pipeline.py
+```
+
+This runs market fetch, feature build, sentiment fetch, feature merge, predictor, and dashboard refresh once.
+
+Useful debugging variants:
+
+```bash
+python services/models/classification/run_realtime_pipeline.py --dry-run
+python services/models/classification/run_realtime_pipeline.py --skip-market --skip-sentiment
+python services/models/classification/run_realtime_pipeline.py --skip-dashboard
+```
+
+Manual equivalent:
+
+```bash
+python services/models/classification/realtime_market_fetcher.py
+python services/models/classification/realtime_feature_builder.py
+python services/models/classification/realtime_sentiment_fetcher.py
+python services/models/classification/realtime_merge_features.py
+python services/models/classification/realtime_predictor.py
+```
+
+For live orderbook collection, run the Binance WebSocket collector separately:
+
+```bash
+python services/ingest/connectors/binance_orderbook.py
+```
+
+For a short local smoke sample:
+
+```bash
+timeout 75s python services/ingest/connectors/binance_orderbook.py
+```
+
+`realtime_predictor.py` currently uses:
+
+```text
+HORIZON = 4
+SCALER = services/models/classification/data/processed/scaler_h4.pkl
+MODEL = services/models/models/xgboost_h4.json
+CONFIDENCE_THRESHOLD = 0.60
+```
+
+Decision gate:
+
+```text
+Probability UP >= 0.60  -> UP
+Probability UP <= 0.40  -> DOWN
+Otherwise               -> NEUTRAL
+```
+
+The predictor also returns `NEUTRAL` if:
+
+- trained features are missing from the live feature file,
+- the latest row has NaN/inf values,
+- model/scaler/feature registry counts do not match,
+- the trained model expects orderbook features but the latest orderbook bucket is unavailable.
+
+Each predictor run writes:
+
+```text
+services/models/classification/data/realtime/last_signal.json
+```
+
+Each orchestrator run writes:
+
+```text
+services/models/classification/data/realtime/last_pipeline_run.json
+services/models/classification/data/realtime/logs/realtime_pipeline_<run_id>.log
+```
+
+Recommended runtime schedule:
+
+```text
+Always on:
+  python services/ingest/connectors/binance_orderbook.py
+
+Every 5 minutes:
+  python services/models/classification/realtime_sentiment_fetcher.py
+
+Every 15 minutes, just after candle close:
+  python services/models/classification/run_realtime_pipeline.py
+```
+
+Example cron:
+
+```cron
+*/5 * * * * cd /home/nourmaatouk/Solana-AI-Trading-System && python services/models/classification/realtime_sentiment_fetcher.py >> services/models/classification/data/realtime/logs/sentiment_cron.log 2>&1
+1,16,31,46 * * * * cd /home/nourmaatouk/Solana-AI-Trading-System && python services/models/classification/run_realtime_pipeline.py >> services/models/classification/data/realtime/logs/pipeline_cron.log 2>&1
+```
+
+## Dashboard
+
+Generate the small HTML dashboard:
+
+```bash
+python services/models/classification/22_realtime_classifier_dashboard.py
+```
+
+Open:
+
+```text
+services/models/classification/reports/realtime_classifier_dashboard.html
+```
+
+If your shell says `Permission denied`, that means you tried to execute the HTML file. Open it with a browser instead:
+
+```bash
+xdg-open services/models/classification/reports/realtime_classifier_dashboard.html
+```
+
+Or serve it locally:
+
+```bash
+python -m http.server 8080 -d services/models/classification/reports
+```
+
+Then open:
+
+```text
+http://localhost:8080/realtime_classifier_dashboard.html
+```
+
+## Testing
+
+Run the classification tests:
+
+```bash
+python -m pytest services/models/classification/tests
+```
+
+Current expected result after the realtime-path updates:
+
+```text
+35 passed
+```
+
+## Known Caveats
+
+- The current live predictor uses H4, which is a one-hour horizon because candles are 15 minutes.
+- The historical sentiment merge script is not yet a complete historical NLP backfill workflow by itself. Use its helper function with an explicit sentiment CSV if you need a true historical sentiment merge.
+- The older sequence scripts (`03_build_sequences.py`, `04_split_data.py`, `05_train_xgboost_baseline.py`, and parts of `21_xgboost_curves.py`) are legacy/compatibility paths and are not the main no-leak H4/H8/H16 pipeline.
+- The model output is a signal score, not financial advice and not a guarantee. It still needs risk sizing, execution checks, slippage/fee modeling, and paper trading before real use.

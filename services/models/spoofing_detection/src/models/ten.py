@@ -301,10 +301,12 @@ class TENSpoofingDetector(nn.Module):
         return logits.argmax(dim=-1)
 
     @property
+    @torch.jit.unused
     def num_parameters(self) -> int:
         return sum(p.numel() for p in self.parameters())
 
     @property
+    @torch.jit.unused
     def num_trainable_parameters(self) -> int:
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
 

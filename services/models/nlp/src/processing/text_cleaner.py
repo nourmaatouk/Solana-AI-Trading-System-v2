@@ -3,7 +3,7 @@ from bs4 import BeautifulSoup
 from typing import Optional, Dict
 
 
-def clean_text(text: Optional[str]) -> str:
+def clean_text(text: Optional[str], min_tokens: int = 20) -> str:
     """
     Cleans raw text by:
     - handling None safely
@@ -37,15 +37,18 @@ def clean_text(text: Optional[str]) -> str:
     
     # Final check: Token count (using simple space splitting)
     tokens = text.split()
-    if len(tokens) < 5:
+    if len(tokens) < min_tokens:
         return ""
         
     return text
 
 
-def prepare_article_text(article: Dict) -> str:
+def prepare_article_text(article: Dict, min_tokens: int = 5) -> str:
     """
     Safely coalesces title, description, and text, then scrubs the payload.
+
+    News fetchers often provide only headline-level text. Use a lower threshold
+    here and let relevance filtering decide whether short headlines are useful.
     """
     if not article:
         return ""
@@ -57,7 +60,7 @@ def prepare_article_text(article: Dict) -> str:
     # Coalesce elements 
     combined = f"{title} {description} {text_content}"
     
-    return clean_text(combined)
+    return clean_text(combined, min_tokens=min_tokens)
 
 
 def calculate_relevance_score(text: str) -> float:
