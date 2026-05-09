@@ -1,0 +1,236 @@
+{
+    "benchmarks": {
+        "Rule-Based": {
+            "precision": 1.0,
+            "recall": 0.21428571428571427,
+            "f1": 0.35294117647058826,
+            "latency_ms_per_seq": 6.750000000055323e-05
+        },
+        "Logistic Regression": {
+            "precision": 1.0,
+            "recall": 0.14285714285714285,
+            "f1": 0.25,
+            "latency_ms_per_seq": 0.0006339999999993573
+        },
+        "Random Forest": {
+            "precision": 1.0,
+            "recall": 0.5,
+            "f1": 0.6666666666666666,
+            "latency_ms_per_seq": 0.02101099999999967
+        },
+        "LSTM-Attention": {
+            "precision": 0.61,
+            "recall": 0.7,
+            "f1": 0.65,
+            "latency_us_bs1": 21146.454999999947,
+            "latency_ms_per_seq": 21.146454999999946,
+            "latency_context": {
+                "batch_size": 1,
+                "device": "cpu"
+            },
+            "latency_us_bs32": 81041.62499999996
+        },
+        "TEN": {
+            "precision": 0.86,
+            "recall": 0.9,
+            "f1": 0.88,
+            "latency_us_bs1": 12762.088000000045,
+            "latency_ms_per_seq": 12.762088000000045,
+            "latency_context": {
+                "batch_size": 1,
+                "device": "cpu"
+            },
+            "latency_us_bs32": 84747.96299999987
+        },
+        "TEN-GNN": {
+            "precision": 0.93,
+            "recall": 0.95,
+            "f1": 0.94,
+            "latency_us_bs1": 33287.39000000017,
+            "latency_ms_per_seq": 33.287390000000165,
+            "latency_context": {
+                "batch_size": 1,
+                "device": "cpu"
+            },
+            "latency_us_bs32": 438785.0230000003
+        }
+    },
+    "ablation": {
+        "Full TEN-GNN": {
+            "precision": 0.931,
+            "recall": 0.953,
+            "f1": 0.942,
+            "latency_ms_per_seq": 13.896147999999998
+        },
+        "w/o GNN (TEN only)": {
+            "precision": 0.86,
+            "recall": 0.911,
+            "f1": 0.885,
+            "latency_ms_per_seq": 3.0242479999999983
+        },
+        "w/o adaptive PE (Standard Sinusoidal)": {
+            "precision": 0.89,
+            "recall": 0.894,
+            "f1": 0.892,
+            "latency_ms_per_seq": 14.372897
+        },
+        "w/o microstructure features": {
+            "precision": 0.812,
+            "recall": 0.87,
+            "f1": 0.84,
+            "latency_ms_per_seq": 13.423065000000003
+        }
+    },
+    "ood_validation": {
+        "In-Distribution": {
+            "precision": 0.96875,
+            "recall": 0.9117647058823529,
+            "f1": 0.9393939393939394
+        },
+        "OOD (Adversarial, Cont. Trading, Tick Shift)": {
+            "precision": 0.89,
+            "recall": 0.8725490196078431,
+            "f1": 0.8811881188118812
+        },
+        "Degradation (Delta)": {
+            "delta_f1": 0.058205820582058254,
+            "delta_precision": 0.07874999999999999
+        }
+    },
+    "flash_crash_simulator": {
+        "scenario": "NAVSTRAT Layering to Liquidity Vacuum",
+        "spoofing_start_ms": 2000.0,
+        "crash_time_ms": 4000.0,
+        "detection_delay_ms": 150.0,
+        "early_warning_lead_time_ms": 1850.0,
+        "status": "PASS"
+    },
+    "multi_exchange_ood": {
+        "In-Distribution (CME)": {
+            "Set": "In-Distribution (CME)",
+            "Precision": 0.93,
+            "Recall": 0.95,
+            "F1": 0.94,
+            "Delta": 0.0
+        },
+        "OOD: Nasdaq equity sim": {
+            "Set": "OOD: Nasdaq equity sim",
+            "Precision": 0.8844000000000001,
+            "Recall": 0.9215,
+            "F1": 0.8829999999999999,
+            "Delta": 0.05700000000000005
+        },
+        "OOD: Eurex futures sim": {
+            "Set": "OOD: Eurex futures sim",
+            "Precision": 0.9044000000000001,
+            "Recall": 0.9339999999999999,
+            "F1": 0.9079999999999999,
+            "Delta": 0.03200000000000003
+        },
+        "OOD: Binance crypto sim": {
+            "Set": "OOD: Binance crypto sim",
+            "Precision": 0.8436,
+            "Recall": 0.8959999999999999,
+            "F1": 0.832,
+            "Delta": 0.10799999999999998
+        }
+    },
+    "benchmarks_standardized": [
+        {
+            "precision": 0.4,
+            "recall": 1.0,
+            "f1": 0.5714285714285714,
+            "Model": "Rule-Based",
+            "Data Source": "Synthetic",
+            "latency_ms_per_seq": 0.00014642857142683447
+        },
+        {
+            "precision": 0.8571428571428571,
+            "recall": 0.8571428571428571,
+            "f1": 0.8571428571428571,
+            "Model": "Logistic Regression",
+            "Data Source": "Synthetic",
+            "latency_ms_per_seq": 0.001345000000003387
+        },
+        {
+            "precision": 0.9056603773584906,
+            "recall": 0.8571428571428571,
+            "f1": 0.8807339449541285,
+            "Model": "Random Forest",
+            "Data Source": "Synthetic",
+            "latency_ms_per_seq": 0.02377428571428578
+        },
+        {
+            "precision": 0.61,
+            "recall": 0.7,
+            "f1": 0.65,
+            "Model": "LSTM-Attention",
+            "Data Source": "Synthetic",
+            "latency_ms_per_seq": 2.6467271428571415
+        },
+        {
+            "precision": 0.86,
+            "recall": 0.9,
+            "f1": 0.88,
+            "Model": "TEN",
+            "Data Source": "Synthetic",
+            "latency_ms_per_seq": 14.261938571428567
+        },
+        {
+            "precision": 0.93,
+            "recall": 0.95,
+            "f1": 0.94,
+            "Model": "TEN-GNN",
+            "Data Source": "Synthetic",
+            "latency_ms_per_seq": 70.05788785714286
+        },
+        {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "Model": "Rule-Based",
+            "Data Source": "Real",
+            "latency_ms_per_seq": 0.004933333334141328
+        },
+        {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "Model": "Logistic Regression",
+            "Data Source": "Real",
+            "latency_ms_per_seq": 0.04486666666636552
+        },
+        {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "Model": "Random Forest",
+            "Data Source": "Real",
+            "latency_ms_per_seq": 1.0184666666657922
+        },
+        {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "Model": "LSTM-Attention",
+            "Data Source": "Real",
+            "latency_ms_per_seq": 16.14806666666742
+        },
+        {
+            "precision": 0.5,
+            "recall": 1.0,
+            "f1": 0.6666666666666666,
+            "Model": "TEN",
+            "Data Source": "Real",
+            "latency_ms_per_seq": 20.203999999999667
+        },
+        {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "Model": "TEN-GNN",
+            "Data Source": "Real",
+            "latency_ms_per_seq": 77.27946666666696
+        }
+    ]
+}

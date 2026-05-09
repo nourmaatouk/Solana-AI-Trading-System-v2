@@ -1,0 +1,73 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment files — keep .env.example, never commit real secrets
+.env
+.env.local
+.env.*.local
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Distribution / packaging
+*.whl
+*.tar.gz
+*.zip
+
+# ML model weights and large binaries
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.onnx
+*.ckpt
+*.pkl
+*.joblib
+
+# Data files — processed outputs and raw downloads (large, reproducible)
+**/data/raw/
+**/data/processed/
+**/data/logs/
+*.parquet
+*.h5
+*.hdf5
+
+# Reports and generated HTML (reproducible via scripts)
+**/reports/*.html
+**/reports/images/
+
+# Logs
+*.log
+**/logs/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+**/.vscode/
+**/.idea/
+*.swp
+*.swo
+
+# pytest / coverage
+**/.pytest_cache/
+**/.coverage
+**/htmlcov/
