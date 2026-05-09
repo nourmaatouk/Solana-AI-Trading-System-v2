@@ -1,27 +1,14 @@
 # Execution Services
 
-Services for trade execution, routing, and risk management.
+**Status: Not yet implemented.**
 
-## Structure
+No execution code exists. The full system currently stops at signal generation — it produces a directional prediction (UP / DOWN / NEUTRAL) but does not place any trades.
 
-- **hft/** - High-frequency trading execution
-- **risk/** - Risk management and compliance
-- **rpc/** - RPC client management for blockchain interaction
-- **standard/** - Standard execution routing
+Before building this layer you need: paper trading validation, slippage and fee modelling, and risk sizing on top of the classifier output.
 
-## Purpose
+## Planned Sub-services
 
-Handles:
-- Order creation and submission
-- Trade routing to optimal DEX
-- Risk validation and checks
-- Circuit breakers and emergency stops
-- Position tracking and P&L calculation
-
-## Key Responsibilities
-
-- Validating trades against risk limits
-- Routing orders through optimal liquidity venues
-- Managing slippage and execution quality
-- Real-time position tracking
-- Reporting and compliance
+- `hft/` — Sub-millisecond Jito bundle execution (not yet built)
+- `standard/` — Jupiter/Raydium/Orca order routing (not yet built)
+- `risk/` — Pre-trade risk checks and circuit breakers (not yet built)
+- `rpc/` — Solana RPC connection pool (not yet built)

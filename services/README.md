@@ -1,25 +1,22 @@
 # Services
 
-Core microservices implementing trading logic and data processing.
+Core services for the Solana AI Trading System.
 
 ## Structure
 
-- **execution/** - Trade execution services
-- **ingest/** - Data ingestion and connectors
-- **models/** - AI/ML model implementations
-- **processing/** - Data processing and feature engineering
+- **ingest/** - Market data collection (Binance WebSocket — operational)
+- **models/** - AI/ML models (classification and NLP — operational; others planned)
+- **processing/** - Feature engineering pipeline (planned, not yet implemented)
+- **execution/** - Trade execution layer (planned, not yet implemented)
 
-## Purpose
+## What Works Today
 
-Implements the core business logic:
-- Data ingestion from multiple sources
-- Feature engineering and signal generation
-- AI model inference
-- Trade execution and risk management
-
-## Key Services
-
-- **Execution**: Order routing and trade execution
-- **Ingest**: Real-time market data collection
-- **Models**: ML model serving and inference
-- **Processing**: Feature engineering and data transformation
+| Service | Status |
+|---------|--------|
+| `ingest/connectors/binance_orderbook.py` | Operational |
+| `models/classification/` | Operational |
+| `models/nlp/` | Operational |
+| `models/spoofing_detection/` | Research prototype |
+| `models/fusion/` | Partial implementation |
+| `processing/` | Not implemented |
+| `execution/` | Not implemented |

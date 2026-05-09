@@ -1,30 +1,11 @@
 # Data Processing Service
 
-Feature engineering and data transformation pipeline.
+**Status: Not yet implemented.**
 
-## Structure
+Feature engineering and pipeline orchestration are planned for a future phase. Currently, feature calculation is handled inside each model service directly:
 
-- **features/** - Feature calculation and engineering
-- **pipeline/** - Data processing pipeline orchestration
+- Orderbook features: `services/ingest/connectors/binance_orderbook.py`
+- Sentiment features: `services/models/nlp/src/aggregation/feature_aggregator.py`
+- Realtime feature merge: `services/models/classification/realtime_merge_features.py`
 
-## Purpose
-
-Transforms raw market data into ML-ready features:
-- Technical indicator calculation
-- Statistical features
-- Microstructure features
-- Sentiment features
-- Network features
-
-## Pipeline Stages
-
-1. Raw data ingestion
-2. Validation and cleaning
-3. Feature engineering
-4. Normalization and scaling
-5. Feature aggregation
-6. Storage for model inference
-
-## Performance
-
-Sub-millisecond feature calculation for real-time trading.
+When this service is built it will centralize those concerns into a shared processing layer.

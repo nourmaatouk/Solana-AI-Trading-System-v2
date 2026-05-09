@@ -1,30 +1,26 @@
 # Data Ingestion Service
 
-Real-time market data collection from multiple sources.
+Real-time market data collection.
 
-## Structure
+## What Is Implemented
 
-- **connectors/** - Data source connectors
+### Binance Orderbook Connector
 
-## Purpose
+`connectors/binance_orderbook.py` — WebSocket stream for SOL/USDT Level-2 orderbook snapshots.
 
-Collects data from:
-- Binance (spot market data)
+Collects bids/asks every 100ms and writes aggregated 15-minute features:
+- `bid_ask_spread`
+- `orderbook_imbalance`
+- `top5_bid_volume` / `top5_ask_volume`
+
+Output: `services/models/classification/data/realtime/latest_orderbook_features.csv`
+
+## What Is Not Yet Implemented
+
+The following connectors are planned but do not exist yet:
+
 - OpenBook DEX (on-chain order book)
 - Helius (enriched blockchain data)
-- Reddit (sentiment data)
-- Solana blockchain (on-chain events)
+- Direct Solana blockchain events
 
-## Processing Pipeline
-
-1. Data collection from source
-2. Validation and normalization
-3. Storage in TimescaleDB/Redis
-4. Event publishing to processing pipeline
-
-## Real-time Updates
-
-- WebSocket connections for live data
-- Order book snapshots and updates
-- Trade execution events
-- Sentiment score updates
+Reddit sentiment collection is handled by the NLP service (`services/models/nlp/`), not this ingest layer.

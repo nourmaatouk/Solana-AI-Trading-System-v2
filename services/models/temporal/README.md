@@ -1,26 +1,5 @@
 # Temporal Models
 
-Time-series models for price and market prediction.
+**Status: Not yet implemented.** No code exists in this directory.
 
-## Purpose
-
-Predicts:
-- Future price movements
-- Volatility forecasting
-- Volume prediction
-- Market microstructure dynamics
-
-## Models
-
-- LSTM (Long Short-Term Memory)
-- Transformer-based models
-- Temporal Convolutional Networks
-- AutoRegressive models (ARIMA, GARCH)
-
-## Output
-
-Returns:
-- Price predictions
-- Confidence intervals
-- Volatility estimates
-- Trend components
+LSTM, Transformer, TCN, and ARIMA/GARCH models for time-series price prediction are planned but not yet built.

@@ -1,26 +1,20 @@
 # Fusion Models
 
-Ensemble fusion combining multiple model predictions.
+**Status: Partial implementation.**
 
-## Purpose
+Infrastructure exists (`src/fusion_aggregator.py`, `src/fusion_contracts.py`, `src/stream_adapter.py`) but full integration with the classification and NLP pipelines is not yet complete.
 
-Aggregates signals from:
-- Classification models
-- Regression models
-- Reinforcement learning policies
-- NLP sentiment scores
+## What Exists
 
-## Methods
+- `src/fusion_aggregator.py` — Weighted signal aggregator
+- `src/fusion_contracts.py` — Shared schema contracts for fused signals
+- `src/stream_adapter.py` — Streaming adapter for real-time fusion
+- `tests/test_fusion_integration.py` — Integration tests
+- `run_streaming_demo.py` — Demo runner
 
-- Weighted averaging
-- Stacking
-- Voting
-- Attention-based fusion
+## What Is Missing
 
-## Output
-
-Combined prediction with:
-- Weighted scores
-- Confidence intervals
-- Constituent model contributions
-- Disagreement detection
+- Live integration with `models/classification/` output
+- Live integration with `models/nlp/` sentiment output
+- RL policy hookup (Phase 4)
+- Attention-based fusion (planned)

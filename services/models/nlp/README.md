@@ -49,7 +49,7 @@ The NLP code is one-shot by default. It runs once each time you execute the scri
 For automatic live behavior, use an external scheduler:
 
 ```bash
-*/5 * * * * cd /home/nourmaatouk/Solana-AI-Trading-System && . .venv/bin/activate && python services/models/nlp/src/main.py
+*/5 * * * * cd /path/to/Solana-AI-Trading-System && . .venv/bin/activate && python services/models/nlp/src/main.py
 ```
 
 Recommended live schedule:

@@ -1,25 +1,5 @@
 # Reinforcement Learning Models
 
-RL policies for autonomous trading strategy learning.
+**Status: Not yet implemented.** No code exists in this directory.
 
-## Purpose
-
-Learns:
-- Optimal trading actions under different market conditions
-- Risk-adjusted reward maximization
-- Multi-step strategy planning
-- Portfolio allocation decisions
-
-## Models
-
-- Proximal Policy Optimization (PPO)
-- Deep Q-Network (DQN)
-- Actor-Critic methods
-
-## Output
-
-Returns:
-- Recommended action (buy, sell, hold)
-- Action probability distribution
-- Value function estimates
-- State importance
+A PPO/DQN execution agent is planned in Phase 4 of the roadmap to handle position sizing and dynamic stop-loss management on top of the XGBoost + NLP signal stack.

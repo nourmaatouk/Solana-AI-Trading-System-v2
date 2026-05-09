@@ -177,8 +177,8 @@ Every 15 minutes, just after candle close:
 Example cron:
 
 ```cron
-*/5 * * * * cd /home/nourmaatouk/Solana-AI-Trading-System && python services/models/classification/realtime_sentiment_fetcher.py >> services/models/classification/data/realtime/logs/sentiment_cron.log 2>&1
-1,16,31,46 * * * * cd /home/nourmaatouk/Solana-AI-Trading-System && python services/models/classification/run_realtime_pipeline.py >> services/models/classification/data/realtime/logs/pipeline_cron.log 2>&1
+*/5 * * * * cd /path/to/Solana-AI-Trading-System && python services/models/classification/realtime_sentiment_fetcher.py >> services/models/classification/data/realtime/logs/sentiment_cron.log 2>&1
+1,16,31,46 * * * * cd /path/to/Solana-AI-Trading-System && python services/models/classification/run_realtime_pipeline.py >> services/models/classification/data/realtime/logs/pipeline_cron.log 2>&1
 ```
 
 ## Dashboard

@@ -1,25 +1,5 @@
-# Spatial Models
+# Spatial Models (GNN)
 
-Graph neural networks for spatial market relationships.
+**Status: Not yet implemented.** No code exists in this directory.
 
-## Purpose
-
-Analyzes:
-- Token correlation networks
-- Market microstructure graphs
-- Liquidity networks
-- Information flow between assets
-
-## Models
-
-- Graph Convolutional Networks (GCN)
-- Graph Attention Networks (GAT)
-- Message Passing Neural Networks
-
-## Output
-
-Returns:
-- Node embeddings
-- Market predictions
-- Correlation structures
-- Network anomalies
+GNN prototypes (GCN, GAT) live inside `services/models/spoofing_detection/src/models/` as part of the TEN-GNN spoofing detection research. Integration into the main classification pipeline is planned in Phase 3 of the roadmap.

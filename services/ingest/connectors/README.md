@@ -1,26 +1,20 @@
 # Data Connectors
 
-Data source connector implementations.
+## Implemented
 
-## Purpose
+### `binance_orderbook.py`
 
-Each connector implements:
-- Connection establishment and health monitoring
-- Data fetching and transformation
-- Error handling and retries
-- Metadata enrichment
+WebSocket connector for the Binance SOL/USDT Level-2 orderbook.
 
-## Connectors
+- Streams live bids/asks at 100ms intervals
+- Aggregates into 15-minute orderbook features
+- Handles reconnection on disconnect
+- Writes to `services/models/classification/data/realtime/latest_orderbook_features.csv`
 
-- **BinanceConnector** - Binance API integration
-- **OpenBookConnector** - Solana OpenBook DEX
-- **HeliusConnector** - Helius RPCs for enriched data
-- **RedditConnector** - Sentiment data extraction
-- **SolanaConnector** - Direct blockchain data
+## Not Yet Implemented
 
-## Features
+The following connectors are planned but have no code:
 
-- Automatic reconnection on failure
-- Rate limit handling
-- Data deduplication
-- Timestamp synchronization
+- `openbook_connector.py` — Solana OpenBook DEX on-chain order book
+- `helius_connector.py` — Helius RPC enriched blockchain events
+- `solana_connector.py` — Direct Solana blockchain data
