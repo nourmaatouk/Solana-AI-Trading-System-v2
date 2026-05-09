@@ -48,7 +48,7 @@ def run_ablation(output_json: Path, n_samples: int = 100):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     seq_len = 100
     n_assets = 3
-    d_input_full = 33
+    d_input_full = 34  # matches N_FEATURES_KAGGLE (33 + cancel_ratio)
     d_input_no_micro = 10
 
     torch.manual_seed(42)

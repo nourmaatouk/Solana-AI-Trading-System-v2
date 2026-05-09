@@ -63,6 +63,14 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--batch-size", type=int, default=32)
     p.add_argument("--lr", type=float, default=5e-4)
     p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--window-stride", type=int, default=10,
+                   help="Sliding window stride (default 10 → ~10× more windows than stride=100)")
+    p.add_argument("--d-model", type=int, default=128,
+                   help="Transformer d_model (default 128 — smaller fits small datasets)")
+    p.add_argument("--n-layers", type=int, default=3,
+                   help="Number of transformer layers (default 3)")
+    p.add_argument("--dropout", type=float, default=0.1,
+                   help="Dropout rate (default 0.1)")
     p.add_argument("--checkpoint-dir", type=str, default=None,
                    help="Override checkpoint directory")
     return p.parse_args()
@@ -103,6 +111,7 @@ def build_multi_asset_dataset(
     frequency: str,
     max_rows: int | None,
     seed: int,
+    window_stride: int = 10,
 ) -> tuple[np.ndarray, np.ndarray, dict[str, np.ndarray]]:
     """Load each asset, align windows by minimum count, stack into (B, N, T, D).
 
@@ -139,7 +148,7 @@ def build_multi_asset_dataset(
             ts_seconds = np.arange(len(df), dtype=np.float64) * 60.0
 
         features, _ = extract_lob_features(df, n_levels=15)
-        X, y = label_real_spoofing(df, features, window_length=100, window_stride=50, n_levels=15)
+        X, y = label_real_spoofing(df, features, window_length=100, window_stride=window_stride, n_levels=15)
 
         per_asset_X.append(X)
         per_asset_y.append(y)
@@ -190,7 +199,7 @@ def train_tengnn(
     counts = np.bincount(all_labels, minlength=2).astype(np.float64)
     weights = torch.tensor(all_labels.size / (2 * counts.clip(min=1)),
                            dtype=torch.float32, device=device)
-    criterion = nn.CrossEntropyLoss(weight=weights)
+    criterion = nn.CrossEntropyLoss(weight=weights, label_smoothing=0.1)
 
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=config.lr, weight_decay=config.weight_decay
@@ -299,15 +308,18 @@ def main() -> int:
     print("=" * 80)
     print("TRAINING TEN-GNN SPOOFING DETECTOR  (multi-asset)")
     print("=" * 80)
-    print(f"Assets    : {args.assets}")
-    print(f"Frequency : {args.frequency}")
-    print(f"Max rows  : {args.max_rows or 'all'}")
-    print(f"Epochs    : {args.epochs}")
+    print(f"Assets        : {args.assets}")
+    print(f"Frequency     : {args.frequency}")
+    print(f"Max rows      : {args.max_rows or 'all'}")
+    print(f"Window stride : {args.window_stride}")
+    print(f"Epochs        : {args.epochs}")
+    print(f"d_model       : {args.d_model}  n_layers: {args.n_layers}")
 
     # ── 1. Load data ──────────────────────────────────────────────────────────
     print("\n[1] Loading and aligning multi-asset data...")
     X_multi, y_union, asset_ts = build_multi_asset_dataset(
-        args.assets, args.frequency, args.max_rows, args.seed
+        args.assets, args.frequency, args.max_rows, args.seed,
+        window_stride=args.window_stride,
     )
     n_windows, n_assets, seq_len, n_features = X_multi.shape
 
@@ -341,14 +353,16 @@ def main() -> int:
     # ── 4. Build model ────────────────────────────────────────────────────────
     print(f"\n[4] Building TENGNNModel ({n_assets} assets, {n_features} features)...")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    d_ff = args.d_model * 4
+    n_heads = min(8, args.d_model // 32)   # keep head_dim >= 32
     model = TENGNNModel(
         n_assets=n_assets,
         d_input=n_features,
-        d_model=256,
-        n_heads=8,
-        n_layers=6,
-        d_ff=1024,
-        dropout=0.1,
+        d_model=args.d_model,
+        n_heads=n_heads,
+        n_layers=args.n_layers,
+        d_ff=d_ff,
+        dropout=args.dropout,
     )
     total_params = sum(p.numel() for p in model.parameters())
     print(f"    Parameters: {total_params:,}  |  Device: {device}")

@@ -12,10 +12,14 @@ LOB data has fewer available columns than a full LOBSTER feed:
 
     Kaggle path (kaggle_loader.py → extract_lob_features):
         2  base features  (midpoint, spread)
-        30 depth features (bid_notional + ask_notional × 15 levels)
-        1  imbalance
+        30 depth features (bid_notional + ask_notional × 15 levels, interleaved)
+        1  imbalance      (bid_vol - ask_vol) / total_vol
+        1  cancel_ratio   cancel_vol / (limit_vol + cancel_vol)
         ─────────────────
-        33 total  →  N_FEATURES_KAGGLE
+        34 total  →  N_FEATURES_KAGGLE
+
+    Index map:  0=midpoint, 1=spread, 2=bid_1, 3=ask_1, ..., 30=bid_15, 31=ask_15,
+                32=imbalance, 33=cancel_ratio
 
     LOBSTER path (feature_engineering.py → LOBFeatureEngineer):
         40 price/vol features (10 bid price, 10 ask price, 10 bid vol, 10 ask vol)
@@ -38,7 +42,7 @@ from __future__ import annotations
 from pathlib import Path
 
 # ── Feature dimensions ────────────────────────────────────────────────────────
-N_FEATURES_KAGGLE: int = 33   # midpoint + spread + (bid+ask)×15 levels + imbalance
+N_FEATURES_KAGGLE: int = 34   # midpoint + spread + (bid+ask)×15 levels + imbalance + cancel_ratio
 N_FEATURES_LOBSTER: int = 49  # full LOBFeatureEngineer output
 
 # ── Windowing ─────────────────────────────────────────────────────────────────

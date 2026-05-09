@@ -285,7 +285,10 @@ class TENTrainer:
             class_weights.tolist(), class_counts.tolist(),
         )
 
-        return nn.CrossEntropyLoss(weight=weights)
+        # label_smoothing=0.1 prevents overconfident predictions and model collapse.
+        # Without it, a large model can minimise CE loss by driving logits to ±∞,
+        # collapsing to always-predict-majority regardless of input features.
+        return nn.CrossEntropyLoss(weight=weights, label_smoothing=0.1)
 
     def train(
         self,

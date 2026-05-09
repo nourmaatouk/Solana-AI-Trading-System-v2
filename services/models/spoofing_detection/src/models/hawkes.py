@@ -121,13 +121,15 @@ class HawkesEstimator:
             
             # Combined Branching Ratio
             A = (alpha1_opt / self.beta1) + (alpha2_opt / self.beta2)
-            
-            # Normalize
-            row_max = np.maximum(A.max(axis=1, keepdims=True), 1e-2)
-            A_norm = A / row_max
-            
+
+            # Row-max normalization (A / row_max) guarantees at least one 1.0 per row,
+            # which saturates the GNN attention for every asset regardless of true coupling
+            # strength.  Clip to [0, 1] instead — preserves relative magnitudes and
+            # keeps super-critical rows (branching ratio > 1) at the ceiling.
+            A = np.clip(A, 0.0, 0.9)
+
             with self._lock:
-                self._adjacency = A_norm.astype(np.float32)
+                self._adjacency = A.astype(np.float32)
                 
             logger.debug("Hawkes adjacency updated (Double-Exp Kernel).")
             

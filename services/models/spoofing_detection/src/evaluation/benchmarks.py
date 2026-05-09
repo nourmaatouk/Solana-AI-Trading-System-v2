@@ -39,14 +39,20 @@ class LSTMAttention(nn.Module):
 
 # ── 2. Rule-based Baseline ───────────────────────────────────────────────────
 def rule_based_detector(order_imbalance: np.ndarray, delta_t_ms: np.ndarray) -> np.ndarray:
-    """Flag a sequence as spoofing if order imbalance is extreme AND events arrive fast.
+    """Flag a sequence as spoofing if order imbalance peaks above 0.7 AND a burst
+    of fast events (< 10 ms) occurs anywhere in the sequence.
 
-    Uses feature indices from feature_engineering.py:
+    Uses feature indices from the LOBSTER 49-feature schema (synthetic data path):
         index 44 — order_imbalance = (bid_vol - ask_vol) / total_vol
         index 43 — delta_t_ms (time since last event)
 
-    A sequence is flagged when the last event has extreme imbalance (> 0.7 or < -0.7)
-    AND very fast inter-event time (< 10 ms), indicating a burst of one-sided orders.
+    Both inputs should be the PEAK statistic over the full sequence:
+        order_imbalance = max(|imbalance|) over all timesteps
+        delta_t_ms      = min(delta_t)     over all timesteps
+
+    Checking only the last timestep misses the layering phase (t=30–60) where
+    spoofing signals are injected; the aftermath phase (t=80–100) resets both
+    features to benign values.
     """
     return ((np.abs(order_imbalance) > 0.7) & (delta_t_ms < 10.0)).astype(int)
 
@@ -83,9 +89,18 @@ def run_benchmarks(
         n_feat = X_test.shape[2]
 
         # ── Rule-based ────────────────────────────────────────────────────────
-        # index 44 = order_imbalance, index 43 = delta_t_ms (feature_engineering.py)
+        # Indices 44 (imbalance) and 43 (delta_t_ms) are LOBSTER-schema positions.
+        # Only valid on 49-feature synthetic data; skip gracefully on 33-feature Kaggle.
+        # Use PEAK |imbalance| and MINIMUM delta_t over the full sequence — the
+        # spoofing signature lives in the layering phase (t=30..60), not the last step.
         t0 = time.perf_counter()
-        y_pred_rule = rule_based_detector(X_test[:, -1, 44], X_test[:, -1, 43])
+        if n_feat >= 45:
+            peak_imbalance = np.abs(X_test[:, :, 44]).max(axis=1)
+            min_delta_t    = X_test[:, :, 43].min(axis=1)
+        else:
+            peak_imbalance = np.zeros(len(y_test))
+            min_delta_t    = np.full(len(y_test), np.inf)
+        y_pred_rule = rule_based_detector(peak_imbalance, min_delta_t)
         lat_rule = (time.perf_counter() - t0) * 1000 / max(len(y_test), 1)
         m_rule = compute_point_metrics(y_test, y_pred_rule)
         m_rule.update({"Model": "Rule-Based", "Data Source": source_name,

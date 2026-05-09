@@ -5,6 +5,7 @@ import torch
 from pathlib import Path
 from typing import Optional
 from src.evaluation.metrics import compute_detection_delay_ms
+from src.config import N_FEATURES_KAGGLE, N_FEATURES_LOBSTER
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +47,14 @@ def run_flash_crash_sim(
     n_steps = len(event_times_ms)
 
     if device is None:
-        device = torch.device("cpu")
+        if model is not None:
+            # Inherit the device the model already lives on
+            try:
+                device = next(model.parameters()).device
+            except StopIteration:
+                device = torch.device("cpu")
+        else:
+            device = torch.device("cpu")
 
     if model is not None:
         # ── Real model inference ──────────────────────────────────────────────
@@ -58,11 +66,36 @@ def run_flash_crash_sim(
         # For 49-feature LOBSTER schema: indices 43=delta_t, 44=imbalance, 45=spread.
         # We use relative indices that work for both schemas.
         seq_len = 100
-        # Use last 3 features for phase injection (works regardless of d_input)
-        imbalance_idx = d_input - 1
-        spread_idx    = d_input - 2
-        delta_t_idx   = d_input - 3 if d_input >= 3 else 0
         rng = np.random.default_rng(42)
+
+        # Resolve feature indices from the known schema.
+        # Kaggle 33-feature: midpoint=0, spread=1, bid/ask notionals interleaved 2..31, imbalance=32.
+        # LOBSTER 49-feature: delta_t=43, imbalance=44, spread=45.
+        # The previous d_input-k heuristic mapped spread_idx→asks_notional_15 and
+        # delta_t_idx→bids_notional_15, injecting into deep book columns instead of
+        # the intended microstructure features.
+        if d_input == N_FEATURES_KAGGLE:
+            imbalance_idx    = 32
+            cancel_ratio_idx = 33
+            spread_idx       = 1
+            midpoint_idx     = 0
+            delta_t_idx      = None  # not present in Kaggle schema
+        elif d_input == N_FEATURES_LOBSTER:
+            imbalance_idx    = 44
+            cancel_ratio_idx = None  # not a named feature in LOBSTER schema
+            spread_idx       = 45
+            delta_t_idx      = 43
+            midpoint_idx     = 46
+        else:
+            logger.warning(
+                "Unrecognised d_input=%d; falling back to last-3 heuristic. "
+                "Injection may hit wrong features.", d_input
+            )
+            imbalance_idx    = d_input - 1
+            cancel_ratio_idx = None
+            spread_idx       = d_input - 2
+            delta_t_idx      = d_input - 3 if d_input >= 3 else 0
+            midpoint_idx     = None
 
         model.eval()
         predictions = np.zeros(n_steps, dtype=float)
@@ -76,17 +109,32 @@ def run_flash_crash_sim(
             X = np.zeros((1, seq_len, d_input), dtype=np.float32)
 
             if t < spoofing_start_ms:
-                X[0, :, delta_t_idx]   = rng.exponential(1.0, seq_len)
+                # Benign phase: near-zero imbalance, tight spread, stable midpoint
                 X[0, :, imbalance_idx] = rng.normal(0.0, 0.1, seq_len)
                 X[0, :, spread_idx]    = rng.uniform(0.01, 0.05, seq_len)
+                if delta_t_idx is not None:
+                    X[0, :, delta_t_idx] = rng.exponential(1.0, seq_len)
+                if midpoint_idx is not None:
+                    X[0, :, midpoint_idx] = np.cumsum(rng.normal(0, 0.01, seq_len))
             elif t < crash_time_ms:
-                X[0, :, delta_t_idx]   = rng.uniform(-1.0, -0.5, seq_len)
+                # Spoofing phase: one-sided imbalance spike, high cancel ratio,
+                # spread compression from apparent depth illusion.
                 X[0, :, imbalance_idx] = rng.uniform(-2.0, -1.5, seq_len)
                 X[0, :, spread_idx]    = rng.uniform(-1.5, -1.0, seq_len)
+                if cancel_ratio_idx is not None:
+                    X[0, :, cancel_ratio_idx] = rng.uniform(2.0, 3.5, seq_len)
+                if delta_t_idx is not None:
+                    X[0, :, delta_t_idx] = rng.uniform(-1.0, -0.5, seq_len)
+                if midpoint_idx is not None:
+                    X[0, :, midpoint_idx] = np.cumsum(rng.normal(-0.02, 0.01, seq_len))
             else:
-                X[0, :, delta_t_idx]   = rng.exponential(0.5, seq_len)
+                # Vacuum/crash phase: extreme imbalance, wide spread
                 X[0, :, imbalance_idx] = rng.uniform(-3.0, -2.5, seq_len)
                 X[0, :, spread_idx]    = rng.uniform(2.0, 3.0, seq_len)
+                if delta_t_idx is not None:
+                    X[0, :, delta_t_idx] = rng.exponential(0.5, seq_len)
+                if midpoint_idx is not None:
+                    X[0, :, midpoint_idx] = np.cumsum(rng.normal(-0.05, 0.02, seq_len))
 
             X_tensor = torch.tensor(X, dtype=torch.float32, device=device)
             with torch.no_grad():

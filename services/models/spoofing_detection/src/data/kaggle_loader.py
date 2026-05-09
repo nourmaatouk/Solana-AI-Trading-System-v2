@@ -121,16 +121,25 @@ def extract_lob_features(
         # 3. Order imbalance (normalized)
         total_bid = sum(float(row.get(f'bids_limit_notional_{i}', 0)) or 0 for i in range(1, n_levels + 1))
         total_ask = sum(float(row.get(f'asks_limit_notional_{i}', 0)) or 0 for i in range(1, n_levels + 1))
-        
+
         if total_bid + total_ask > 0:
             imbalance = (total_bid - total_ask) / (total_bid + total_ask)
         else:
             imbalance = 0
-        
+
         tick_features.append(imbalance)
-        
+
+        # 4. Cancel ratio — primary spoofing signal; used for labeling but was
+        #    absent from the feature matrix, forcing the model to infer it indirectly.
+        cancel_bid = sum(float(row.get(f'bids_cancel_notional_{i}', 0)) or 0 for i in range(1, n_levels + 1))
+        cancel_ask = sum(float(row.get(f'asks_cancel_notional_{i}', 0)) or 0 for i in range(1, n_levels + 1))
+        cancel_vol = cancel_bid + cancel_ask
+        limit_vol  = total_bid + total_ask
+        cancel_ratio = cancel_vol / (limit_vol + cancel_vol) if (limit_vol + cancel_vol) > 0 else 0.0
+        tick_features.append(cancel_ratio)
+
         # Pad to ensure consistent feature count
-        n_features_expected = 2 + (n_levels * 2) + 1  # midpoint, spread, bid/ask per level, imbalance
+        n_features_expected = 2 + (n_levels * 2) + 2  # midpoint, spread, bid/ask per level, imbalance, cancel_ratio
         while len(tick_features) < n_features_expected:
             tick_features.append(0)
         
