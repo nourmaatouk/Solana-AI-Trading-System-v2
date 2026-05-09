@@ -74,7 +74,7 @@ TRAIN_PATIENCE: int = 8
 # ── Checkpoint paths ──────────────────────────────────────────────────────────
 _ROOT = Path(__file__).resolve().parent.parent  # spoofing_detection/
 
-CHECKPOINT_BEST: Path = _ROOT / "checkpoints" / "tengnn_btc_eth_sol_1min" / "best_model.pt"
+CHECKPOINT_BEST: Path = _ROOT / "checkpoints" / "tengnn_btc_eth_1min" / "best_model.pt"
 CHECKPOINT_INT8: Path = _ROOT / "checkpoints" / "ten_gnn_int8.pt"
 CHECKPOINT_SCRIPTED: Path = _ROOT / "checkpoints" / "ten_gnn_scripted.pt"
 

@@ -285,6 +285,9 @@ def train_tengnn(
                     "n_assets": model.n_assets,
                     "d_input": model.d_input,
                     "d_model": model.d_model,
+                    "n_layers": model.ten_encoder.n_layers,
+                    "d_ff": model.ten_encoder.d_ff,
+                    "n_heads": model.ten_encoder.n_heads,
                 },
             }, ckpt_dir / "best_model.pt")
             logger.info("  ★ New best val F1=%.4f — saved checkpoint", best_val_f1)

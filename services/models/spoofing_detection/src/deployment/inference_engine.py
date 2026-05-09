@@ -75,17 +75,30 @@ class SpoofingInferenceEngine:
             n_assets = cfg.get("n_assets", 3)
             d_input  = cfg.get("d_input", 33)
             d_model  = cfg.get("d_model", 256)
-            model = TENGNNModel(n_assets=n_assets, d_input=d_input, d_model=d_model)
-            model.load_state_dict(ckpt["model_state_dict"])
+            n_heads  = cfg.get("n_heads", min(8, d_model // 32))
+            d_ff     = cfg.get("d_ff", d_model * 4)
+            sd = ckpt["model_state_dict"]
+            n_layers = cfg.get("n_layers", max(
+                int(k.split(".")[3]) + 1
+                for k in sd if k.startswith("ten_encoder.transformer_encoder.layers.")
+            ))
+            model = TENGNNModel(
+                n_assets=n_assets, d_input=d_input, d_model=d_model,
+                n_heads=n_heads, n_layers=n_layers, d_ff=d_ff,
+            )
+            model.load_state_dict(sd)
             adj_np = ckpt.get("adj", np.eye(n_assets))
             logger.info(
-                "Loaded checkpoint: n_assets=%d  d_input=%d  d_model=%d",
-                n_assets, d_input, d_model,
+                "Loaded checkpoint: n_assets=%d  d_input=%d  d_model=%d  n_layers=%d",
+                n_assets, d_input, d_model, n_layers,
             )
         else:
             logger.warning("Checkpoint not found at %s — using random weights", checkpoint_path)
-            n_assets, d_input = 3, 33
-            model = TENGNNModel(n_assets=n_assets, d_input=d_input)
+            n_assets, d_input, d_model, n_layers, d_ff = 3, 34, 128, 3, 512
+            model = TENGNNModel(
+                n_assets=n_assets, d_input=d_input, d_model=d_model,
+                n_layers=n_layers, d_ff=d_ff,
+            )
             adj_np = np.eye(n_assets)
 
         model = model.to(device).eval()

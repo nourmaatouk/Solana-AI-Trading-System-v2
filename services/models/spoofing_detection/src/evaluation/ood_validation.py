@@ -173,12 +173,27 @@ def run_multi_ood_validation(output_json: Path, checkpoint_path: Path) -> None:
         cfg = ckpt.get("config", {})
         n_assets = cfg.get("n_assets", 3)
         d_input  = cfg.get("d_input", 33)
+        d_model  = cfg.get("d_model", 256)
+        n_heads  = cfg.get("n_heads", min(8, d_model // 32))
+        d_ff     = cfg.get("d_ff", d_model * 4)
+        # Infer n_layers from state_dict if not saved in config
+        sd = ckpt["model_state_dict"]
+        n_layers = cfg.get("n_layers", max(
+            int(k.split(".")[3]) + 1
+            for k in sd if k.startswith("ten_encoder.transformer_encoder.layers.")
+        ))
         adj_np   = ckpt.get("adj", None)
-        model = TENGNNModel(n_assets=n_assets, d_input=d_input).to(device)
+        model = TENGNNModel(
+            n_assets=n_assets, d_input=d_input, d_model=d_model,
+            n_heads=n_heads, n_layers=n_layers, d_ff=d_ff,
+        ).to(device)
         model.load_state_dict(ckpt["model_state_dict"])
         adj = (torch.tensor(adj_np, dtype=torch.float32, device=device)
                if adj_np is not None else torch.eye(n_assets, device=device))
-        logger.info("Loaded checkpoint: %s  (n_assets=%d, d_input=%d)", checkpoint_path, n_assets, d_input)
+        logger.info(
+            "Loaded checkpoint: %s  (n_assets=%d, d_input=%d, d_model=%d, n_layers=%d)",
+            checkpoint_path, n_assets, d_input, d_model, n_layers,
+        )
         checkpoint_note = "real model inference"
     else:
         logger.warning(
@@ -186,8 +201,11 @@ def run_multi_ood_validation(output_json: Path, checkpoint_path: Path) -> None:
             "F1 numbers will not be meaningful. Train the model first.",
             checkpoint_path,
         )
-        n_assets, d_input = 3, 33
-        model = TENGNNModel(n_assets=n_assets, d_input=d_input).to(device)
+        n_assets, d_input, d_model, n_layers, d_ff = 3, 34, 128, 3, 512
+        model = TENGNNModel(
+            n_assets=n_assets, d_input=d_input, d_model=d_model,
+            n_layers=n_layers, d_ff=d_ff,
+        ).to(device)
         adj = torch.eye(n_assets, device=device)
         checkpoint_note = "random-weight model — train before interpreting"
 
@@ -268,7 +286,6 @@ def run_multi_ood_validation(output_json: Path, checkpoint_path: Path) -> None:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    root = Path(__file__).resolve().parent.parent.parent
-    out_path = root / "results" / "evaluation_report.json"
-    ckpt_path = root / "checkpoints" / "tengnn_btc_eth_sol_1min" / "best_model.pt"
-    run_multi_ood_validation(out_path, ckpt_path)
+    from src.config import CHECKPOINT_BEST
+    out_path = Path(__file__).resolve().parent.parent.parent / "results" / "evaluation_report.json"
+    run_multi_ood_validation(out_path, CHECKPOINT_BEST)

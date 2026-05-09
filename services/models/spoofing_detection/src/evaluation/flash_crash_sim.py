@@ -214,14 +214,13 @@ def run_flash_crash_sim(
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     import torch
-    root = Path(__file__).resolve().parent.parent.parent
-    out_path = root / "results" / "evaluation_report.json"
-    ckpt_path = root / "checkpoints" / "tengnn_btc_eth_sol_1min" / "best_model.pt"
+    from src.config import CHECKPOINT_BEST
+    out_path = Path(__file__).resolve().parent.parent.parent / "results" / "evaluation_report.json"
 
-    _model, _adj, _n_assets, _d_input = None, None, 3, 33
-    if ckpt_path.exists():
+    _model, _adj, _n_assets, _d_input = None, None, 2, 34
+    if CHECKPOINT_BEST.exists():
         from src.deployment.inference_engine import SpoofingInferenceEngine
-        engine = SpoofingInferenceEngine.from_checkpoint(ckpt_path)
+        engine = SpoofingInferenceEngine.from_checkpoint(CHECKPOINT_BEST)
         _model = engine._model
         _adj   = engine._default_adj
         _n_assets = engine._model.n_assets
