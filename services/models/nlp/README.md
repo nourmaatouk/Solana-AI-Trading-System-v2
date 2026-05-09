@@ -28,7 +28,7 @@ event classification + impact weights
 15-minute sentiment features (feature_aggregator)
          |
          v
-CSV  ──── Redis cache ──── TimescaleDB
+CSV  ──── Redis cache ──── TimescaleDB (optional)
          |
          v
 classification feature merge
@@ -61,23 +61,7 @@ Classification pipeline:      every 15 minutes, after candle close
 Dashboard/report refresh:     after classification prediction
 ```
 
-## Running With Docker
-
-Start the full stack (NLP pipeline + Redis + TimescaleDB):
-
-```bash
-cd services/models/nlp
-cp .env.example .env        # edit credentials if needed
-docker compose up --build
-```
-
-To run only the pipeline once against existing Redis/TimescaleDB instances:
-
-```bash
-docker compose run --rm nlp-pipeline
-```
-
-## Running Locally
+## Running
 
 Install dependencies:
 
@@ -95,11 +79,11 @@ python src/main.py
 This fetches GDELT, RSS, and Reddit articles, deduplicates them, scores them with FinBERT, aggregates to 15-minute buckets, and writes:
 
 ```text
-data/processed/processed_articles.csv          # article-level, for validation
-data/processed/sentiment_features_15m.csv      # aggregated features
-Redis:        nlp:sentiment:<timestamp>         # per-bucket cache (TTL = REDIS_TTL_SECONDS)
-TimescaleDB:  sentiment_features_15m            # hypertable, one row per 15m bucket
+data/processed/processed_articles.csv     # article-level, for validation
+data/processed/sentiment_features_15m.csv # aggregated features
 ```
+
+If Redis and TimescaleDB are running, the pipeline also writes to them automatically. Both are optional — the pipeline falls back to CSV-only if they are unavailable.
 
 ### Live Sentiment Bridge
 
@@ -178,7 +162,7 @@ Both `REDIS_URL` and `TIMESCALE_DSN` are optional for local development — the 
 
 ## Output Features
 
-15-minute aggregated features written to all three outputs (CSV / Redis / TimescaleDB):
+15-minute aggregated features written to CSV (and optionally Redis / TimescaleDB):
 
 ```text
 sentiment_mean                 mean FinBERT score across articles in bucket
