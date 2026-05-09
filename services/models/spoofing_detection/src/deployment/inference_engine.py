@@ -47,10 +47,12 @@ class SpoofingInferenceEngine:
         model: TENGNNModel,
         adj_tensor: torch.Tensor,
         device: torch.device,
+        threshold: float = 0.5,
     ) -> None:
         self._model = model
         self._default_adj = adj_tensor.to(device)
         self._device = device
+        self._threshold = threshold
         self._hawkes_updater = None
         self._lock = threading.Lock()
 
@@ -88,9 +90,10 @@ class SpoofingInferenceEngine:
             )
             model.load_state_dict(sd)
             adj_np = ckpt.get("adj", np.eye(n_assets))
+            threshold = float(ckpt.get("best_threshold", 0.5))
             logger.info(
-                "Loaded checkpoint: n_assets=%d  d_input=%d  d_model=%d  n_layers=%d",
-                n_assets, d_input, d_model, n_layers,
+                "Loaded checkpoint: n_assets=%d  d_input=%d  d_model=%d  n_layers=%d  threshold=%.2f",
+                n_assets, d_input, d_model, n_layers, threshold,
             )
         else:
             logger.warning("Checkpoint not found at %s — using random weights", checkpoint_path)
@@ -100,10 +103,11 @@ class SpoofingInferenceEngine:
                 n_layers=n_layers, d_ff=d_ff,
             )
             adj_np = np.eye(n_assets)
+            threshold = 0.5
 
         model = model.to(device).eval()
         adj_tensor = torch.tensor(adj_np, dtype=torch.float32)
-        return cls(model, adj_tensor, device)
+        return cls(model, adj_tensor, device, threshold=threshold)
 
     def attach_hawkes_updater(self, updater) -> None:
         """Attach a ``HawkesUpdater`` so inference uses its live adjacency."""
@@ -136,9 +140,13 @@ class SpoofingInferenceEngine:
                 probs = torch.softmax(logits, dim=-1)[:, 1]
             return probs.cpu().numpy()
 
-    def predict(self, sequences: torch.Tensor, threshold: float = 0.5) -> np.ndarray:
-        """Return binary predictions (0=legit, 1=spoofing)."""
-        return (self.infer(sequences) >= threshold).astype(np.int64)
+    def predict(self, sequences: torch.Tensor, threshold: Optional[float] = None) -> np.ndarray:
+        """Return binary predictions (0=legit, 1=spoofing).
+
+        Uses the calibrated threshold saved in the checkpoint unless overridden.
+        """
+        t = threshold if threshold is not None else self._threshold
+        return (self.infer(sequences) >= t).astype(np.int64)
 
 def benchmark_inference(model, input_tensor, adj_tensor, name="Model", iterations=100):
     model.eval()
@@ -181,15 +189,28 @@ def export_torchscript(model_path: Path, output_path: Path):
         ckpt = torch.load(model_path, map_location=device, weights_only=False)
         cfg = ckpt.get("config", {})
         n_assets = cfg.get("n_assets", 3)
-        d_input  = cfg.get("d_input", 33)
-        d_model  = cfg.get("d_model", 256)
-        model = TENGNNModel(n_assets=n_assets, d_input=d_input, d_model=d_model).to(device)
-        model.load_state_dict(ckpt["model_state_dict"])
+        d_input  = cfg.get("d_input", 34)
+        d_model  = cfg.get("d_model", 128)
+        n_heads  = cfg.get("n_heads", min(8, d_model // 32))
+        d_ff     = cfg.get("d_ff", d_model * 4)
+        sd = ckpt["model_state_dict"]
+        n_layers = cfg.get("n_layers", max(
+            int(k.split(".")[3]) + 1
+            for k in sd if k.startswith("ten_encoder.transformer_encoder.layers.")
+        ))
+        model = TENGNNModel(
+            n_assets=n_assets, d_input=d_input, d_model=d_model,
+            n_heads=n_heads, n_layers=n_layers, d_ff=d_ff,
+        ).to(device)
+        model.load_state_dict(sd)
         adj_np = ckpt.get("adj", None)
     else:
-        logger.warning("Checkpoint not found at %s — using random weights (n_assets=3, d_input=33)", model_path)
-        n_assets, d_input = 3, 33
-        model = TENGNNModel(n_assets=n_assets, d_input=d_input).to(device)
+        logger.warning("Checkpoint not found at %s — using random weights", model_path)
+        n_assets, d_input, d_model, n_layers, d_ff = 3, 34, 128, 3, 512
+        model = TENGNNModel(
+            n_assets=n_assets, d_input=d_input, d_model=d_model,
+            n_layers=n_layers, d_ff=d_ff,
+        ).to(device)
         adj_np = None
     model.eval()
 

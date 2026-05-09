@@ -387,24 +387,44 @@ def main() -> int:
     print(f"\n[5] Training for up to {args.epochs} epochs (patience=8)...")
     best = train_tengnn(model, train_loader, val_loader, adj_tensor, config, device)
 
-    # ── 6. Test evaluation ────────────────────────────────────────────────────
-    print("\n[6] Loading best checkpoint and evaluating on test set...")
+    # ── 6. Collect probabilities on val + test ────────────────────────────────
+    print("\n[6] Loading best checkpoint, calibrating threshold on val, evaluating test...")
     ckpt = torch.load(Path(ckpt_dir) / "best_model.pt", map_location=device,
                       weights_only=False)
     model.load_state_dict(ckpt["model_state_dict"])
     model.eval()
-
-    test_preds, test_labels = [], []
     adj_tensor = adj_tensor.to(device)
-    with torch.no_grad():
-        for X_batch, y_batch in test_loader:
-            logits = model(X_batch.to(device), adj_tensor)
-            test_preds.extend(logits.argmax(dim=-1).cpu().numpy())
-            test_labels.extend(y_batch.numpy())
 
-    test_m = compute_metrics(np.array(test_labels), np.array(test_preds))
+    def collect_probs(loader) -> tuple[np.ndarray, np.ndarray]:
+        probs, labels = [], []
+        with torch.no_grad():
+            for X_batch, y_batch in loader:
+                logits = model(X_batch.to(device), adj_tensor)
+                probs.extend(torch.softmax(logits, dim=-1)[:, 1].cpu().numpy())
+                labels.extend(y_batch.numpy())
+        return np.array(probs), np.array(labels)
 
-    # ── 7. Report ─────────────────────────────────────────────────────────────
+    val_probs,  val_labels  = collect_probs(val_loader)
+    test_probs, test_labels = collect_probs(test_loader)
+
+    # ── 7. Threshold calibration on val ──────────────────────────────────────
+    thresholds = np.linspace(0.05, 0.95, 91)
+    val_f1s = np.array([
+        float(f1_score(val_labels, (val_probs >= t).astype(int), zero_division=0))
+        for t in thresholds
+    ])
+    best_thresh = float(thresholds[val_f1s.argmax()])
+    best_val_f1_thresh = float(val_f1s.max())
+
+    # Default (0.5) for comparison
+    test_m_default = compute_metrics(test_labels, (test_probs >= 0.5).astype(int))
+    test_m_calibrated = compute_metrics(test_labels, (test_probs >= best_thresh).astype(int))
+
+    # Persist best threshold into checkpoint so inference_engine can use it
+    ckpt["best_threshold"] = best_thresh
+    torch.save(ckpt, Path(ckpt_dir) / "best_model.pt")
+
+    # ── 8. Report ─────────────────────────────────────────────────────────────
     print("\n" + "=" * 80)
     print("TRAINING COMPLETE")
     print("=" * 80)
@@ -412,12 +432,17 @@ def main() -> int:
     print(f"  F1:        {best.get('val_f1', 0):.4f}")
     print(f"  Precision: {best.get('val_precision', 0):.4f}")
     print(f"  Recall:    {best.get('val_recall', 0):.4f}")
-    print(f"\nTest Set:")
-    print(f"  F1:        {test_m['f1']:.4f}")
-    print(f"  Precision: {test_m['precision']:.4f}")
-    print(f"  Recall:    {test_m['recall']:.4f}")
-    print(f"\nCheckpoint: {ckpt_dir}/best_model.pt")
-    print(f"Adjacency matrix saved inside checkpoint['adj']")
+    print(f"\nThreshold calibration  (swept on val set):")
+    print(f"  Best threshold : {best_thresh:.2f}  (val F1={best_val_f1_thresh:.4f})")
+    print(f"\nTest Set @ threshold=0.50 (argmax):")
+    print(f"  F1:        {test_m_default['f1']:.4f}")
+    print(f"  Precision: {test_m_default['precision']:.4f}")
+    print(f"  Recall:    {test_m_default['recall']:.4f}")
+    print(f"\nTest Set @ threshold={best_thresh:.2f} (calibrated):")
+    print(f"  F1:        {test_m_calibrated['f1']:.4f}")
+    print(f"  Precision: {test_m_calibrated['precision']:.4f}")
+    print(f"  Recall:    {test_m_calibrated['recall']:.4f}")
+    print(f"\nCheckpoint: {ckpt_dir}/best_model.pt  (threshold saved inside)")
     print("=" * 80)
     return 0
 
