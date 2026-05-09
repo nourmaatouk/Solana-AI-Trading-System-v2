@@ -1,11 +1,131 @@
+"""
+inference_engine.py — Production inference for TEN-GNN spoofing detection
+=========================================================================
+
+Provides:
+    - ``SpoofingInferenceEngine``: load checkpoint, infer with optional live
+      adjacency override from ``HawkesUpdater``.
+    - ``export_torchscript``: benchmark and export to TorchScript for serving.
+    - ``benchmark_inference``: latency measurement helper.
+
+Typical usage
+-------------
+    engine = SpoofingInferenceEngine.from_checkpoint(
+        "checkpoints/tengnn_btc_eth_sol_1min/best_model.pt"
+    )
+    engine.attach_hawkes_updater(updater)   # optional — feeds live adjacency
+
+    probs = engine.infer(sequences_tensor)  # (B,) spoofing probabilities
+"""
+
 import time
+import threading
 import torch
 import logging
+import numpy as np
 from pathlib import Path
-from typing import Tuple
+from typing import Optional, Tuple
 from src.models.ten_gnn import TENGNNModel
 
 logger = logging.getLogger(__name__)
+
+
+class SpoofingInferenceEngine:
+    """Thread-safe inference wrapper around a trained TENGNNModel.
+
+    Parameters
+    ----------
+    model : TENGNNModel
+        The trained model (already moved to ``device`` and set to eval).
+    adj_tensor : torch.Tensor
+        Default adjacency matrix (n_assets × n_assets) stored in the checkpoint.
+    device : torch.device
+    """
+
+    def __init__(
+        self,
+        model: TENGNNModel,
+        adj_tensor: torch.Tensor,
+        device: torch.device,
+    ) -> None:
+        self._model = model
+        self._default_adj = adj_tensor.to(device)
+        self._device = device
+        self._hawkes_updater = None
+        self._lock = threading.Lock()
+
+    @classmethod
+    def from_checkpoint(
+        cls,
+        checkpoint_path: str | Path,
+        device: Optional[torch.device] = None,
+    ) -> "SpoofingInferenceEngine":
+        """Load a trained checkpoint and return a ready-to-use engine.
+
+        Falls back to random weights if the checkpoint does not exist (useful
+        for testing the pipeline without a trained model).
+        """
+        if device is None:
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        checkpoint_path = Path(checkpoint_path)
+        if checkpoint_path.exists():
+            ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
+            cfg = ckpt.get("config", {})
+            n_assets = cfg.get("n_assets", 3)
+            d_input  = cfg.get("d_input", 33)
+            d_model  = cfg.get("d_model", 256)
+            model = TENGNNModel(n_assets=n_assets, d_input=d_input, d_model=d_model)
+            model.load_state_dict(ckpt["model_state_dict"])
+            adj_np = ckpt.get("adj", np.eye(n_assets))
+            logger.info(
+                "Loaded checkpoint: n_assets=%d  d_input=%d  d_model=%d",
+                n_assets, d_input, d_model,
+            )
+        else:
+            logger.warning("Checkpoint not found at %s — using random weights", checkpoint_path)
+            n_assets, d_input = 3, 33
+            model = TENGNNModel(n_assets=n_assets, d_input=d_input)
+            adj_np = np.eye(n_assets)
+
+        model = model.to(device).eval()
+        adj_tensor = torch.tensor(adj_np, dtype=torch.float32)
+        return cls(model, adj_tensor, device)
+
+    def attach_hawkes_updater(self, updater) -> None:
+        """Attach a ``HawkesUpdater`` so inference uses its live adjacency."""
+        self._hawkes_updater = updater
+        logger.info("HawkesUpdater attached — adjacency will be refreshed dynamically")
+
+    def _current_adj(self) -> torch.Tensor:
+        if self._hawkes_updater is not None:
+            live = self._hawkes_updater.adjacency
+            return torch.tensor(live, dtype=torch.float32, device=self._device)
+        return self._default_adj
+
+    def infer(self, sequences: torch.Tensor) -> np.ndarray:
+        """Run inference and return spoofing probability for each window.
+
+        Parameters
+        ----------
+        sequences : torch.Tensor of shape (B, N, T, D)
+            B = batch size, N = n_assets, T = window_length, D = n_features.
+
+        Returns
+        -------
+        np.ndarray of shape (B,) — P(spoofing) in [0, 1] for each window.
+        """
+        with self._lock:
+            adj = self._current_adj()
+            sequences = sequences.to(self._device)
+            with torch.no_grad():
+                logits = self._model(sequences, adj)
+                probs = torch.softmax(logits, dim=-1)[:, 1]
+            return probs.cpu().numpy()
+
+    def predict(self, sequences: torch.Tensor, threshold: float = 0.5) -> np.ndarray:
+        """Return binary predictions (0=legit, 1=spoofing)."""
+        return (self.infer(sequences) >= threshold).astype(np.int64)
 
 def benchmark_inference(model, input_tensor, adj_tensor, name="Model", iterations=100):
     model.eval()
@@ -41,17 +161,31 @@ def compile_torchscript_model(
 
 def export_torchscript(model_path: Path, output_path: Path):
     """Exports the TEN-GNN model to TorchScript."""
-    device = torch.device("cpu") # Benchmarking on CPU as requested
-    
-    # Load model
-    model = TENGNNModel(n_assets=5).to(device)
+    device = torch.device("cpu")
+
+    # Load checkpoint and reconstruct model with saved config
     if model_path.exists():
-        model.load_state_dict(torch.load(model_path, map_location=device))
+        ckpt = torch.load(model_path, map_location=device, weights_only=False)
+        cfg = ckpt.get("config", {})
+        n_assets = cfg.get("n_assets", 3)
+        d_input  = cfg.get("d_input", 33)
+        d_model  = cfg.get("d_model", 256)
+        model = TENGNNModel(n_assets=n_assets, d_input=d_input, d_model=d_model).to(device)
+        model.load_state_dict(ckpt["model_state_dict"])
+        adj_np = ckpt.get("adj", None)
+    else:
+        logger.warning("Checkpoint not found at %s — using random weights (n_assets=3, d_input=33)", model_path)
+        n_assets, d_input = 3, 33
+        model = TENGNNModel(n_assets=n_assets, d_input=d_input).to(device)
+        adj_np = None
     model.eval()
-    
-    # Mock input
-    input_tensor = torch.randn(1, 5, 100, 49).to(device)
-    adj_tensor = torch.eye(5).to(device)
+
+    adj_tensor = (
+        torch.tensor(adj_np, dtype=torch.float32).to(device)
+        if adj_np is not None
+        else torch.eye(n_assets).to(device)
+    )
+    input_tensor = torch.randn(1, n_assets, 100, d_input).to(device)
     
     logger.info("Comparing Eager vs TorchScript...")
     eager_lat = benchmark_inference(model, input_tensor, adj_tensor, name="Eager Mode")
@@ -71,6 +205,7 @@ def export_torchscript(model_path: Path, output_path: Path):
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     root = Path(__file__).resolve().parent.parent.parent
-    checkpoint = root / "checkpoints" / "ten_gnn_latest.pt"
+    # Default: BTC+ETH+SOL 1min checkpoint — override with --checkpoint arg if needed
+    checkpoint = root / "checkpoints" / "tengnn_btc_eth_sol_1min" / "best_model.pt"
     export_path = root / "checkpoints" / "ten_gnn_scripted.pt"
     export_torchscript(checkpoint, export_path)

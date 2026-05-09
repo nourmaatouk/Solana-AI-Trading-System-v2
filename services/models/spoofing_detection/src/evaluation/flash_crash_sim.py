@@ -1,84 +1,188 @@
 import json
 import logging
 import numpy as np
+import torch
 from pathlib import Path
+from typing import Optional
 from src.evaluation.metrics import compute_detection_delay_ms
 
 logger = logging.getLogger(__name__)
 
-def run_flash_crash_sim(output_json: Path):
-    """
-    Simulates Navinder Sarao's NAVSTRAT layering strategy to test early warning detection.
-    Strategy: Large sell-side layers at 5 successive price levels, repeated every 200ms, 
-    canceled within 300ms. Followed by a liquidity vacuum.
+
+def run_flash_crash_sim(
+    output_json: Path,
+    model: Optional[object] = None,
+    device: Optional[torch.device] = None,
+    adjacency: Optional[torch.Tensor] = None,
+    n_assets: int = 1,
+    d_input: int = 33,
+) -> None:
+    """Simulate NAVSTRAT layering strategy and measure model detection delay.
+
+    Timeline (all times in ms):
+        0  – 2000  : normal benign trading
+        2000 – 4000: NAVSTRAT sell-side layering (spoofing active)
+        4000+      : liquidity vacuum / crash
+
+    Predictions come from the supplied model. If ``adjacency`` is provided the
+    model is called as ``model(X, adjacency)`` (TEN-GNN path). Otherwise it is
+    called as ``model(X)`` (single-asset TEN path). If no model is provided the
+    function produces a clearly-labelled SIMULATION-ONLY result.
+
+    Parameters
+    ----------
+    output_json : Path to write results JSON.
+    model       : Optional trained TENSpoofingDetector or TENGNNModel.
+    device      : torch device (defaults to CPU).
+    adjacency   : (n_assets, n_assets) tensor for TEN-GNN mode.
+    n_assets    : number of assets (only used when adjacency is provided).
+    d_input     : feature dimension (default 33, matching Kaggle checkpoint).
     """
     logger.info("Running Flash Crash NAVSTRAT Layering Simulator...")
-    
-    # Simulate a chronological sliding window over 5000ms
-    # 0 - 2000ms: Normal benign trading
-    # 2000ms: NAVSTRAT Layering starts
-    # 4000ms: Liquidity vacuum (10-level bid depletion) (Crash)
-    
+
     spoofing_start_ms = 2000.0
     crash_time_ms = 4000.0
-    
-    # We evaluate every 50ms (stride)
-    event_times_ms = np.arange(0, 5000, 50)
-    predictions = np.zeros_like(event_times_ms, dtype=float)
-    
-    for i, t in enumerate(event_times_ms):
-        if t < spoofing_start_ms:
-            # Benign
-            predictions[i] = np.random.uniform(0.01, 0.15)
-        elif spoofing_start_ms <= t < crash_time_ms:
-            # Spoofing patterns accumulate. Confidence grows fast for TEN-GNN
-            time_since_spoof = t - spoofing_start_ms
-            # Reaches >0.5 confidence after ~150-250ms of NAVSTRAT observation
-            confidence = min(0.98, 0.1 + (time_since_spoof / 250.0))
-            # add small variance
-            predictions[i] = max(0.0, min(1.0, confidence + np.random.uniform(-0.05, 0.05)))
-        else:
-            # Crash already happening/happened
-            predictions[i] = 0.99
-            
+    event_times_ms = np.arange(0, 5000, 50)  # evaluate every 50 ms
+    n_steps = len(event_times_ms)
+
+    if device is None:
+        device = torch.device("cpu")
+
+    if model is not None:
+        # ── Real model inference ──────────────────────────────────────────────
+        # Inject phase-specific features into normalized z-score space.
+        # Three informative indices (approximate positions in 33-feature schema):
+        #   feature ~0: midpoint (not used directly here)
+        #   feature ~1: spread
+        #   feature ~2: order imbalance
+        # For 49-feature LOBSTER schema: indices 43=delta_t, 44=imbalance, 45=spread.
+        # We use relative indices that work for both schemas.
+        seq_len = 100
+        # Use last 3 features for phase injection (works regardless of d_input)
+        imbalance_idx = d_input - 1
+        spread_idx    = d_input - 2
+        delta_t_idx   = d_input - 3 if d_input >= 3 else 0
+        rng = np.random.default_rng(42)
+
+        model.eval()
+        predictions = np.zeros(n_steps, dtype=float)
+
+        if device is None:
+            device = torch.device("cpu")
+        if adjacency is not None:
+            adjacency = adjacency.to(device)
+
+        for step_i, t in enumerate(event_times_ms):
+            X = np.zeros((1, seq_len, d_input), dtype=np.float32)
+
+            if t < spoofing_start_ms:
+                X[0, :, delta_t_idx]   = rng.exponential(1.0, seq_len)
+                X[0, :, imbalance_idx] = rng.normal(0.0, 0.1, seq_len)
+                X[0, :, spread_idx]    = rng.uniform(0.01, 0.05, seq_len)
+            elif t < crash_time_ms:
+                X[0, :, delta_t_idx]   = rng.uniform(-1.0, -0.5, seq_len)
+                X[0, :, imbalance_idx] = rng.uniform(-2.0, -1.5, seq_len)
+                X[0, :, spread_idx]    = rng.uniform(-1.5, -1.0, seq_len)
+            else:
+                X[0, :, delta_t_idx]   = rng.exponential(0.5, seq_len)
+                X[0, :, imbalance_idx] = rng.uniform(-3.0, -2.5, seq_len)
+                X[0, :, spread_idx]    = rng.uniform(2.0, 3.0, seq_len)
+
+            X_tensor = torch.tensor(X, dtype=torch.float32, device=device)
+            with torch.no_grad():
+                if adjacency is not None:
+                    # TEN-GNN: expand to (B, N, T, D)
+                    X_gnn = X_tensor.unsqueeze(1).expand(-1, n_assets, -1, -1)
+                    logits = model(X_gnn, adjacency)
+                else:
+                    # Single-asset TEN
+                    logits = model(X_tensor)
+            proba = torch.softmax(logits, dim=-1)[0, 1].item()
+            predictions[step_i] = proba
+
+        simulation_mode = "real_model_inference"
+
+    else:
+        # ── Simulation-only mode (no real model) ──────────────────────────────
+        # This is a deterministic ramp used only to test the metrics pipeline.
+        # The detection delay here is SCRIPTED, NOT MEASURED.
+        logger.warning(
+            "No model provided — using scripted simulation predictions. "
+            "The detection delay is NOT a real measurement. "
+            "Pass a trained model to get meaningful results."
+        )
+        rng = np.random.default_rng(42)
+        predictions = np.zeros(n_steps, dtype=float)
+        for i, t in enumerate(event_times_ms):
+            if t < spoofing_start_ms:
+                predictions[i] = rng.uniform(0.01, 0.15)
+            elif t < crash_time_ms:
+                time_since_spoof = t - spoofing_start_ms
+                confidence = min(0.98, 0.1 + time_since_spoof / 250.0)
+                predictions[i] = float(np.clip(confidence + rng.uniform(-0.05, 0.05), 0, 1))
+            else:
+                predictions[i] = 0.99
+
+        simulation_mode = "scripted_simulation_only_not_real_detection"
+
     delay_ms = compute_detection_delay_ms(event_times_ms, predictions, spoofing_start_ms)
-    
-    # How much time between detection and the actual crash?
-    early_warning_time_ms = (crash_time_ms - spoofing_start_ms) - delay_ms
-    
+    early_warning_ms = (crash_time_ms - spoofing_start_ms) - delay_ms if not np.isnan(delay_ms) else float("nan")
+
     results = {
         "scenario": "NAVSTRAT Layering to Liquidity Vacuum",
+        "simulation_mode": simulation_mode,
         "spoofing_start_ms": spoofing_start_ms,
         "crash_time_ms": crash_time_ms,
-        "detection_delay_ms": delay_ms,
-        "early_warning_lead_time_ms": early_warning_time_ms,
-        "status": "PASS" if early_warning_time_ms > 0 else "FAIL"
+        "detection_delay_ms": float(delay_ms),
+        "early_warning_lead_time_ms": float(early_warning_ms),
+        "status": "PASS" if (not np.isnan(early_warning_ms) and early_warning_ms > 0) else "FAIL",
     }
 
     output_json.parent.mkdir(parents=True, exist_ok=True)
-    
-    existing_data = {}
+    existing_data: dict = {}
     if output_json.exists():
         with open(output_json, "r") as f:
             existing_data = json.load(f)
-            
+
     existing_data["flash_crash_simulator"] = results
-    
+
     with open(output_json, "w") as f:
         json.dump(existing_data, f, indent=4)
-        
-    print("\n" + "="*70)
+
+    print("\n" + "=" * 70)
     print("FLASH CRASH SIMULATOR: NAVSTRAT LAYERING")
     print("=" * 70)
+    print(f"Mode:                 {simulation_mode}")
     print(f"Spoofing Injected at: {spoofing_start_ms:.1f} ms")
-    print(f"Crash / Vacum Event:  {crash_time_ms:.1f} ms")
-    print(f"Algorithm Detection Delay (Post-Inject): {delay_ms:.1f} ms")
-    print(f"Early Warning Lead Time (Pre-Crash):     {early_warning_time_ms:.1f} ms")
+    print(f"Crash / Vacuum Event: {crash_time_ms:.1f} ms")
+    print(f"Detection Delay:      {delay_ms:.1f} ms" if not np.isnan(delay_ms) else "Detection Delay:      never detected")
+    print(f"Early Warning Lead:   {early_warning_ms:.1f} ms" if not np.isnan(early_warning_ms) else "Early Warning Lead:   N/A")
     print(f"System Response:      {results['status']}")
-    print("="*70)
-    logger.info(f"Saved Flash Crash simulation results to {output_json}")
+    print("=" * 70)
+    if simulation_mode != "real_model_inference":
+        print("NOTE: results above use scripted predictions, not a trained model.")
+    logger.info("Saved Flash Crash simulation results to %s", output_json)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    out_path = Path(__file__).resolve().parent.parent.parent / "results" / "evaluation_report.json"
-    run_flash_crash_sim(out_path)
+    import torch
+    root = Path(__file__).resolve().parent.parent.parent
+    out_path = root / "results" / "evaluation_report.json"
+    ckpt_path = root / "checkpoints" / "tengnn_btc_eth_sol_1min" / "best_model.pt"
+
+    _model, _adj, _n_assets, _d_input = None, None, 3, 33
+    if ckpt_path.exists():
+        from src.deployment.inference_engine import SpoofingInferenceEngine
+        engine = SpoofingInferenceEngine.from_checkpoint(ckpt_path)
+        _model = engine._model
+        _adj   = engine._default_adj
+        _n_assets = engine._model.n_assets
+        _d_input  = engine._model.d_input
+
+    run_flash_crash_sim(
+        out_path,
+        model=_model,
+        adjacency=_adj,
+        n_assets=_n_assets,
+        d_input=_d_input,
+    )

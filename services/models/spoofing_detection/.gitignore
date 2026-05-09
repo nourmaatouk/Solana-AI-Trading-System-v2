@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Training artifacts
+*.log
+results/
+training_log_*.csv
+
+# Data — large raw files never committed; block accidental adds
+data/raw/kaggle_crypto/*_1sec.csv
+data/raw/kaggle_crypto/*_5min.csv
+data/raw/kaggle_crypto/ADA_*.csv
+
+# Checkpoints — only the named best checkpoint is kept
+checkpoints/ten_gnn_scripted.pt
+checkpoints/ten_gnn_int8.pt
+checkpoints/kaggle_*/

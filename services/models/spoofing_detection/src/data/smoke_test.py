@@ -60,16 +60,16 @@ def main() -> None:
     from src.data.feature_engineering import LOBFeatureEngineer
 
     engineer = LOBFeatureEngineer(n_levels=10, rolling_window=20)
-    features = engineer.fit_transform(df, n_output_features=47)
+    features = engineer.fit_transform(df)  # default n_output_features=49
     logger.info("  → Feature matrix shape: %s", features.shape)
     logger.info("  → Feature names (first 5): %s", engineer.feature_names[:5])
-    assert features.shape == (5_000, 47), f"Expected (5000, 47), got {features.shape}"
+    assert features.shape == (5_000, 49), f"Expected (5000, 49), got {features.shape}"
     assert not np.isnan(features).any(), "NaNs in features!"
     assert not np.isinf(features).any(), "Infs in features!"
     # Verify scaler is fitted (mean ≈ 0, std ≈ 1)
     assert abs(features.mean()) < 0.01, f"Mean not near 0: {features.mean()}"
     assert abs(features.std() - 1.0) < 0.1, f"Std not near 1: {features.std()}"
-    logger.info("  ✓ Feature engineering OK (47 features, normalized)")
+    logger.info("  ✓ Feature engineering OK (49 features, normalized)")
 
     # ── Step 3: Labeling & windowing ────────────────────────────────────────
     logger.info("\n[3/6] Computing labels and creating windows...")
@@ -87,7 +87,7 @@ def main() -> None:
     logger.info("  → X shape: %s, y shape: %s", X.shape, y.shape)
     assert X.ndim == 3, f"Expected 3D array, got {X.ndim}D"
     assert X.shape[1] == 100, f"Expected window_length=100, got {X.shape[1]}"
-    assert X.shape[2] == 47, f"Expected 47 features, got {X.shape[2]}"
+    assert X.shape[2] == 49, f"Expected 49 features, got {X.shape[2]}"
     assert len(X) == len(y)
     logger.info("  ✓ Labeling & windowing OK")
 
@@ -97,10 +97,10 @@ def main() -> None:
 
     injector = AdversarialInjector(seed=123)
     X_adv, y_adv = injector.generate_synthetic_spoofing_sequences(
-        n_sequences=100, window_length=100, n_features=47
+        n_sequences=100, window_length=100, n_features=49
     )
     logger.info("  → Adversarial X shape: %s, y shape: %s", X_adv.shape, y_adv.shape)
-    assert X_adv.shape == (100, 100, 47), f"Expected (100,100,47), got {X_adv.shape}"
+    assert X_adv.shape == (100, 100, 49), f"Expected (100,100,49), got {X_adv.shape}"
     assert y_adv.shape == (100,)
     n_spoof = y_adv.sum()
     n_legit = len(y_adv) - n_spoof
@@ -156,7 +156,7 @@ def main() -> None:
     logger.info(
         "\nPipeline summary:\n"
         "  • lobster_loader    → 5,000 synthetic events\n"
-        "  • feature_engineer  → (5000, 47) normalized features\n"
+        "  • feature_engineer  → (5000, 49) normalized features\n"
         "  • labeling          → %d windows (100 events, 50%% overlap)\n"
         "  • adversarial       → 100 synthetic sequences\n"
         "  • dataset           → train=%d / val=%d / test=%d\n",

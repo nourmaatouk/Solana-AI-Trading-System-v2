@@ -151,12 +151,7 @@ def main():
     print(f"  Recall:    {test_metrics.get('recall'):.4f}")
     print(f"  Loss:      {test_metrics.get('loss'):.4f}")
     
-    print(f"\n📊 Improvement vs Synthetic (Expected):")
-    print(f"  F1: 0.80 → {test_metrics.get('f1'):.2f} (actual)")
-    print(f"  Precision: 0.81 → {test_metrics.get('precision'):.2f}")
-    print(f"  Recall: 0.77 → {test_metrics.get('recall'):.2f}")
-    
-    print(f"\n💾 Model saved to: {checkpoint_dir}/best_model.pt")
+    print(f"\nModel saved to: {checkpoint_dir}/best_model.pt")
     print(f"📈 Logs saved to: {log_file}")
     
     # Summary

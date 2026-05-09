@@ -1,4 +1,3 @@
-cat > .gitignore <<'EOF'
 # Python
 __pycache__/
 *.pyc
@@ -11,26 +10,12 @@ venv/
 env/
 ml_env/
 
-# Data
-data/
-datasets/
-*.csv
-*.npy
-*.npz
-*.parquet
-*.zip
+# Raw data dumps at the services root level only
+/data/
+/datasets/
 
-# ML models / checkpoints
-checkpoints/
-*.pt
-*.pth
-*.pkl
-*.joblib
-*.onnx
-*.h5
-
-# Node
-node_modules/
+# ML artifacts at the services root level only
+/checkpoints/
 
 # Logs/cache
 *.log
@@ -42,4 +27,3 @@ node_modules/
 .idea/
 .DS_Store
 Thumbs.db
-EOF

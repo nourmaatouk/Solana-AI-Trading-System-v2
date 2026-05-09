@@ -4,27 +4,38 @@ dataset.py — PyTorch Dataset & Data Splitting for Spoofing Detection
 
 Provides:
     - ``SpoofingDataset``: PyTorch Dataset returning (sequence_tensor, label)
-    - ``create_data_splits``: 65/21/21 stratified train/val/test split
-    - ``build_smoke_test_data``: end-to-end pipeline generating 100 synthetic
+    - ``create_data_splits``: chronological 65/21/14 train/val/test split
+    - ``build_smoke_test_data``: end-to-end pipeline generating synthetic
       sequences for smoke testing (no external data needed)
+
+Split strategy
+--------------
+Financial time-series must be split **chronologically**, not randomly.
+A random split would let training windows "see" future information because
+overlapping windows (50% stride) from adjacent time periods can end up in
+both train and test sets, leaking future patterns into training.
+
+The chronological split preserves temporal order:
+    first 65%  → train
+    next  21%  → val
+    last  14%  → test
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Optional, Tuple, Dict
+from typing import Dict, Tuple
 
 import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader, Subset
-from sklearn.model_selection import StratifiedShuffleSplit
+from torch.utils.data import Dataset, DataLoader
 
 logger = logging.getLogger(__name__)
 
-# ── Default split ratios ─────────────────────────────────────────────────────
+# ── Default split ratios (must sum to 1.0) ───────────────────────────────────
 TRAIN_RATIO = 0.65
-VAL_RATIO = 0.21  # Note: 0.65 + 0.21 + 0.14 ≈ 1.0 if strict;
-TEST_RATIO = 0.14  # user spec says 65/21/21 which sums to 1.07 — we normalize
+VAL_RATIO = 0.21
+TEST_RATIO = 0.14  # 0.65 + 0.21 + 0.14 = 1.00
 
 
 class SpoofingDataset(Dataset):
@@ -86,55 +97,52 @@ def create_data_splits(
     train_ratio: float = TRAIN_RATIO,
     val_ratio: float = VAL_RATIO,
     test_ratio: float = TEST_RATIO,
-    seed: int = 42,
+    seed: int = 42,  # kept for API compatibility; not used (split is deterministic)
 ) -> Dict[str, SpoofingDataset]:
-    """Split data into stratified train / val / test SpoofingDatasets."""
-    # Split raw sequences here
-    from sklearn.model_selection import train_test_split
-    
-    X_train, X_tmp, y_train, y_tmp = train_test_split(
-        X, y, train_size=train_ratio, stratify=y, random_state=seed
-    )
-    
-    val_rel_ratio = val_ratio / (val_ratio + test_ratio)
-    X_val, X_test, y_val, y_test = train_test_split(
-        X_tmp, y_tmp, train_size=val_rel_ratio, stratify=y_tmp, random_state=seed
-    )
-    
-    datasets = {
-        "train": SpoofingDataset(X_train, y_train),
-        "val": SpoofingDataset(X_val, y_val),
-        "test": SpoofingDataset(X_test, y_test),
+    """Split sequences into train / val / test using a **chronological** cut.
+
+    Windows are already ordered by time (created with a forward-sliding stride
+    in labeling.py). We preserve that order so the model never trains on data
+    from a later time period than its validation or test data.
+
+    Ratios: 65% train | 21% val | 14% test  (sum = 1.00)
+    """
+    n = len(X)
+    i1 = int(n * train_ratio)
+    i2 = int(n * (train_ratio + val_ratio))
+
+    splits = {
+        "train": (X[:i1],    y[:i1]),
+        "val":   (X[i1:i2],  y[i1:i2]),
+        "test":  (X[i2:],    y[i2:]),
     }
-    # Statistics & Logging
-    for name, ds in datasets.items():
-        pos_ratio = 100.0 * ds.n_positive / max(len(ds), 1)
-        logger.info(
-            "%s: %d samples, %.1f%% positive",
-            name.capitalize(), len(ds), pos_ratio
-        )
-        
-    train_ratio_posneg = datasets["train"].n_negative / max(datasets["train"].n_positive, 1)
-    logger.info("Class distribution — 0: %d samples, 1: %d samples, ratio: %.1f", 
-                datasets["train"].n_negative, datasets["train"].n_positive, train_ratio_posneg)
-                
-    if train_ratio_posneg > 10:
-        logger.info("Ratio > 10:1, automatically applying balanced class weights (handled natively in trainer losses)")
 
-    # Dynamic quality checks instead of hard assertions for flexible scaling
+    datasets: Dict[str, SpoofingDataset] = {}
+    for name, (Xs, ys) in splits.items():
+        datasets[name] = SpoofingDataset(Xs, ys)
+        pos_pct = 100.0 * datasets[name].n_positive / max(len(datasets[name]), 1)
+        logger.info("%s: %d samples, %.1f%% positive", name.capitalize(), len(datasets[name]), pos_pct)
+
     n_train = len(datasets["train"])
-    n_test = len(datasets["test"])
+    n_test  = len(datasets["test"])
     n_pos_test = datasets["test"].n_positive
+    neg_pos_ratio = datasets["train"].n_negative / max(datasets["train"].n_positive, 1)
 
+    logger.info(
+        "Class distribution — neg: %d  pos: %d  ratio: %.1f",
+        datasets["train"].n_negative, datasets["train"].n_positive, neg_pos_ratio,
+    )
+    if neg_pos_ratio > 10:
+        logger.info("Imbalance > 10:1 — trainer uses inverse-frequency class weights automatically.")
     if n_train < 1000:
-        logger.warning(f"Training set small ({n_train} samples). Statistical significance may be limited.")
+        logger.warning("Training set small (%d samples) — statistical significance may be limited.", n_train)
     if n_test < 200:
-        logger.warning(f"Test set small ({n_test} samples). Performance metrics may have high variance.")
+        logger.warning("Test set small (%d samples) — metrics may have high variance.", n_test)
     if n_pos_test < 20:
-        logger.warning(f"Very few positive samples in test set ({n_pos_test}). Recall metrics will be unreliable.")
+        logger.warning("Very few positive samples in test set (%d) — recall will be unreliable.", n_pos_test)
 
-    # Hard floor for safety (must have at least a few samples to function)
-    assert n_train > 0 and n_test > 0, "Dataset splits resulted in empty sets. Increase n_sequences."
+    assert n_train > 0 and n_test > 0, \
+        "Dataset splits resulted in empty sets — increase n_sequences."
 
     return datasets
 
@@ -158,13 +166,20 @@ def create_dataloaders(
         )
     return loaders
 
-def audit_leakage(train_dataset: SpoofingDataset, test_dataset: SpoofingDataset):
-    """Audits leakage dynamically"""
-    train_hashes = set(hash(x.numpy().tobytes()) for x, _ in train_dataset)
-    test_hashes = set(hash(x.numpy().tobytes()) for x, _ in test_dataset)
+def audit_leakage(train_dataset: SpoofingDataset, test_dataset: SpoofingDataset) -> None:
+    """Check for exact duplicate sequences between train and test.
+
+    Note: this catches byte-identical sequences only. With a chronological
+    split and forward-only windows there should be zero duplicates. Overlapping
+    windows from adjacent time slices are NOT byte-identical (different prices),
+    so this check is sufficient when using the chronological split.
+    """
+    train_hashes = {hash(x.numpy().tobytes()) for x, _ in train_dataset}
+    test_hashes  = {hash(x.numpy().tobytes()) for x, _ in test_dataset}
     overlap = train_hashes & test_hashes
-    assert len(overlap) == 0, f"LEAKAGE: {len(overlap)} sequences in both train and test"
-    print("Leakage audit passed: 0 overlapping sequences")
+    if overlap:
+        raise AssertionError(f"LEAKAGE: {len(overlap)} identical sequences in both train and test sets.")
+    logger.info("Leakage audit passed: 0 duplicate sequences between train and test.")
 
 # ── Master Data Loader ──────────────────────────────────────────────────────
 def prepare_data(

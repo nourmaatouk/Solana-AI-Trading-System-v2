@@ -15,12 +15,17 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Dict, Tuple, Optional
+from typing import Tuple, Optional
 
 import numpy as np
 import pandas as pd
+from sklearn.preprocessing import StandardScaler
 
-from data.kaggle_adapters import normalize_kaggle_crypto_frame
+try:
+    from src.data.kaggle_adapters import normalize_kaggle_crypto_frame
+except ModuleNotFoundError:
+    # Fallback when the file is run directly (python kaggle_loader.py)
+    from kaggle_adapters import normalize_kaggle_crypto_frame
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +68,6 @@ def load_kaggle_crypto_data(
 def extract_lob_features(
     df: pd.DataFrame,
     n_levels: int = 10,
-    window_length: int = 100,
 ) -> Tuple[np.ndarray, pd.DataFrame]:
     """
     Extract order book features from raw Kaggle data.
@@ -88,11 +92,11 @@ def extract_lob_features(
     df_features : DataFrame with per-tick features
     """
     logger.info(f"Extracting {n_levels} LOB levels features...")
-    
+
     features_list = []
-    
+
     # Extract features from each row
-    for idx, row in df.iterrows():
+    for _, row in df.iterrows():
         tick_features = []
         
         # 1. Midpoint and spread
@@ -133,8 +137,14 @@ def extract_lob_features(
         features_list.append(tick_features[:n_features_expected])
     
     X_features = np.array(features_list, dtype=np.float32)
-    logger.info(f"Extracted shape: {X_features.shape}")
-    
+
+    # Normalize: replace NaN/Inf from edge rows, then StandardScaler
+    X_features = np.nan_to_num(X_features, nan=0.0, posinf=0.0, neginf=0.0)
+    scaler = StandardScaler()
+    X_features = scaler.fit_transform(X_features).astype(np.float32)
+
+    logger.info(f"Extracted and normalized shape: {X_features.shape}")
+
     return X_features, df
 
 
@@ -169,9 +179,9 @@ def label_real_spoofing(
     
     spoofing_scores = []
     
-    for idx, row in df.iterrows():
+    for _, row in df.iterrows():
         score = 0.0
-        
+
         # Feature 1: Cancel-to-total ratio
         cancel_vol = sum(float(row.get(f'bids_cancel_notional_{level}', 0) or 0) for level in range(1, n_levels + 1))
         cancel_vol += sum(float(row.get(f'asks_cancel_notional_{level}', 0) or 0) for level in range(1, n_levels + 1))
@@ -193,13 +203,25 @@ def label_real_spoofing(
         spoofing_scores.append(score)
     
     spoofing_scores = np.array(spoofing_scores)
-    
-    # Use percentile-based thresholding to target ~30% spoofing rate
-    # (top 30% of scores = likely spoofing)
-    threshold = np.percentile(spoofing_scores, 70)  # Top 30%
-    is_spoof = spoofing_scores > threshold
-    
-    logger.info(f"Score threshold: {threshold:.4f}")
+
+    # Rolling 70th-percentile threshold (window=500 rows, min 50 to warm up).
+    # A global threshold concentrates positives in high-volatility periods and
+    # leaves the chronological test split nearly empty — train ≈47% vs test ≈2%.
+    # The rolling threshold keeps the positive rate stable (~30%) across time so
+    # all three splits have a comparable density of labelled spoofing events.
+    _ROLL = 500
+    scores_s = pd.Series(spoofing_scores)
+    roll_thresh = (
+        scores_s
+        .rolling(_ROLL, min_periods=50)
+        .quantile(0.70)
+    )
+    # Back-fill the first <50 rows with the expanding quantile
+    expanding_thresh = scores_s.expanding(min_periods=1).quantile(0.70)
+    roll_thresh = roll_thresh.fillna(expanding_thresh)
+    is_spoof = spoofing_scores > roll_thresh.values
+
+    logger.info(f"Rolling threshold range: {roll_thresh.min():.4f} – {roll_thresh.max():.4f}")
     logger.info(f"Spoofing rate before windowing: {is_spoof.mean():.1%}")
     
     # Create sliding windows
@@ -255,7 +277,7 @@ def prepare_kaggle_data(
     df = load_kaggle_crypto_data(data_dir, asset, frequency, max_rows)
     
     # Extract features
-    features, _ = extract_lob_features(df, n_levels=n_levels, window_length=100)
+    features, _ = extract_lob_features(df, n_levels=n_levels)
     
     # Label and window
     X, y = label_real_spoofing(df, features, window_length=100, window_stride=50, n_levels=n_levels)

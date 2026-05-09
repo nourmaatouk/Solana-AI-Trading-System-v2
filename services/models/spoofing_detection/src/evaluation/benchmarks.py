@@ -12,167 +12,175 @@ from sklearn.ensemble import RandomForestClassifier
 from src.evaluation.metrics import compute_point_metrics
 from src.models.ten import TENSpoofingDetector
 from src.models.ten_gnn import TENGNNModel
-from src.training.trainer import TrainingConfig, TENTrainer
 
 logger = logging.getLogger(__name__)
 
+
 # ── 1. LSTM-Attention Baseline ───────────────────────────────────────────────
 class LSTMAttention(nn.Module):
-    """2-layer BiLSTM + dot-product attention as a baseline."""
-    def __init__(self, d_input=49, hidden_size=256, num_layers=2, n_classes=2):
+    """2-layer BiLSTM + dot-product attention baseline."""
+
+    def __init__(self, d_input: int = 49, hidden_size: int = 256,
+                 num_layers: int = 2, n_classes: int = 2):
         super().__init__()
         self.lstm = nn.LSTM(
-            input_size=d_input, 
-            hidden_size=hidden_size, 
-            num_layers=num_layers, 
-            batch_first=True, 
-            bidirectional=True
+            input_size=d_input, hidden_size=hidden_size,
+            num_layers=num_layers, batch_first=True, bidirectional=True,
         )
         self.attn = nn.Linear(hidden_size * 2, 1)
         self.fc = nn.Linear(hidden_size * 2, n_classes)
-        
+
     def forward(self, x, adj=None):
-        # x shape: (batch, seq_len, d_input)
-        out, _ = self.lstm(x)  # (batch, seq_len, 2*hidden_size)
-        
-        # Dot-product attention
-        attn_weights = torch.softmax(self.attn(out), dim=1)  # (batch, seq_len, 1)
-        context = torch.sum(attn_weights * out, dim=1)       # (batch, 2*hidden_size)
-        
+        out, _ = self.lstm(x)
+        attn_weights = torch.softmax(self.attn(out), dim=1)
+        context = torch.sum(attn_weights * out, dim=1)
         return self.fc(context)
 
+
 # ── 2. Rule-based Baseline ───────────────────────────────────────────────────
-def rule_based_detector(cancel_ratio: np.ndarray, delta_t_ms: np.ndarray) -> np.ndarray:
+def rule_based_detector(order_imbalance: np.ndarray, delta_t_ms: np.ndarray) -> np.ndarray:
+    """Flag a sequence as spoofing if order imbalance is extreme AND events arrive fast.
+
+    Uses feature indices from feature_engineering.py:
+        index 44 — order_imbalance = (bid_vol - ask_vol) / total_vol
+        index 43 — delta_t_ms (time since last event)
+
+    A sequence is flagged when the last event has extreme imbalance (> 0.7 or < -0.7)
+    AND very fast inter-event time (< 10 ms), indicating a burst of one-sided orders.
     """
-    Flags sequence if V_cancel / V_placed > 0.9 AND delta_t < 500ms.
-    (Takes arrays of shape (N,) representing aggregated sequence features)
-    """
-    return ((cancel_ratio > 0.9) & (delta_t_ms < 500)).astype(int)
+    return ((np.abs(order_imbalance) > 0.7) & (delta_t_ms < 10.0)).astype(int)
+
 
 # ── 3. Evaluation Runner ─────────────────────────────────────────────────────
-def run_benchmarks(output_json: Path, n_samples_synth: int = 1000, n_samples_real: int = 200):
-    """Generates and evaluates models on both synthetic and real data sources."""
+def run_benchmarks(
+    output_json: Path,
+    n_samples_synth: int = 1000,
+) -> None:
+    """Evaluate baseline and deep models on synthetic data.
+
+    Classical ML models (Logistic Regression, Random Forest) are trained on the
+    synthetic train split — their F1 numbers are real.
+
+    Deep learning models (LSTM, TEN, TEN-GNN) use random weights here — their
+    F1 numbers are meaningless. Load a trained checkpoint before comparing F1.
+    Latency numbers are real on all models.
+    """
     from src.data.dataset import prepare_data
-    
-    logger.info(f"Running benchmarks (Synthetic: {n_samples_synth}, Real: {n_samples_real})...")
-    
-    # 1. Prepare Data
+
+    logger.info("Running benchmarks (Synthetic: %d sequences)...", n_samples_synth)
+
+    # NOTE: Real LOBSTER data (AAPL) path is disabled — it requires external
+    # data files not present in this repo. Only the synthetic path runs here.
     data_synth = prepare_data(use_real_data=False, n_sequences=n_samples_synth)
-    data_real = prepare_data(use_real_data=True, n_sequences=n_samples_real)
-    
+
     all_results = []
 
-    def evaluate_on_source(source_name: str, datasets: dict):
-        logger.info(f"Evaluating models on {source_name} data...")
+    def evaluate_on_source(source_name: str, datasets: dict) -> None:
+        logger.info("Evaluating on %s data...", source_name)
         test_ds = datasets["test"]
         X_test = test_ds.X.numpy()
         y_test = test_ds.y.numpy()
-        
-        # Rule-based (using cancel_ratio at idx 41 and delta_t at idx 43 as proxies)
-        # In feature_engineering: 41 is cancel_ratio, 43 is delta_t
+        n_feat = X_test.shape[2]
+
+        # ── Rule-based ────────────────────────────────────────────────────────
+        # index 44 = order_imbalance, index 43 = delta_t_ms (feature_engineering.py)
         t0 = time.perf_counter()
-        y_pred_rule = rule_based_detector(X_test[:, -1, 41], X_test[:, -1, 43])
-        lat_rule = (time.perf_counter() - t0) * 1000 / len(y_test)
+        y_pred_rule = rule_based_detector(X_test[:, -1, 44], X_test[:, -1, 43])
+        lat_rule = (time.perf_counter() - t0) * 1000 / max(len(y_test), 1)
         m_rule = compute_point_metrics(y_test, y_pred_rule)
-        m_rule.update({"Model": "Rule-Based", "Data Source": source_name, "latency_ms_per_seq": lat_rule})
+        m_rule.update({"Model": "Rule-Based", "Data Source": source_name,
+                       "latency_ms_per_seq": lat_rule, "note": "uses imbalance+delta_t"})
         all_results.append(m_rule)
-        
-        # ML Baselines (using mean of sequences as features)
+
+        # ── Classical ML (mean-pooled features) ───────────────────────────────
         X_train_ml = datasets["train"].X.mean(dim=1).numpy()
         y_train_ml = datasets["train"].y.numpy()
-        X_test_ml = datasets["test"].X.mean(dim=1).numpy()
-        
-        # Logistic Regression
+        X_test_ml = X_test.mean(axis=1)
+
         lr = LogisticRegression(max_iter=1000)
         lr.fit(X_train_ml, y_train_ml)
         t0 = time.perf_counter()
         y_pred_lr = lr.predict(X_test_ml)
-        lat_lr = (time.perf_counter() - t0) * 1000 / len(y_test)
+        lat_lr = (time.perf_counter() - t0) * 1000 / max(len(y_test), 1)
         m_lr = compute_point_metrics(y_test, y_pred_lr)
-        m_lr.update({"Model": "Logistic Regression", "Data Source": source_name, "latency_ms_per_seq": lat_lr})
+        m_lr.update({"Model": "Logistic Regression", "Data Source": source_name,
+                     "latency_ms_per_seq": lat_lr})
         all_results.append(m_lr)
-        
-        # Random Forest
+
         rf = RandomForestClassifier(n_estimators=100, random_state=42)
         rf.fit(X_train_ml, y_train_ml)
         t0 = time.perf_counter()
         y_pred_rf = rf.predict(X_test_ml)
-        lat_rf = (time.perf_counter() - t0) * 1000 / len(y_test)
+        lat_rf = (time.perf_counter() - t0) * 1000 / max(len(y_test), 1)
         m_rf = compute_point_metrics(y_test, y_pred_rf)
-        m_rf.update({"Model": "Random Forest", "Data Source": source_name, "latency_ms_per_seq": lat_rf})
+        m_rf.update({"Model": "Random Forest", "Data Source": source_name,
+                     "latency_ms_per_seq": lat_rf})
         all_results.append(m_rf)
-        
-        # Deep Models
+
+        # ── Deep models (random weights — latency measurement only) ───────────
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        
-        # Placeholder scores for demonstration (as in original code)
-        boosts = {
-            "LSTM-Attention": {"f1": 0.65, "precision": 0.61, "recall": 0.70},
-            "TEN": {"f1": 0.88, "precision": 0.86, "recall": 0.90},
-            "TEN-GNN": {"f1": 0.94, "precision": 0.93, "recall": 0.95}
-        }
-        
-        # Evaluate LSTM
-        lstm = LSTMAttention().to(device)
+        random_weight_note = "random-weight model — train before comparing F1"
+
+        X_tensor = torch.tensor(X_test, dtype=torch.float32, device=device)
+
+        lstm = LSTMAttention(d_input=n_feat).to(device)
         t0 = time.perf_counter()
         with torch.no_grad():
-            logits = lstm(torch.tensor(X_test, device=device))
-        lat_lstm = (time.perf_counter() - t0) * 1000 / len(y_test)
+            logits = lstm(X_tensor)
+        lat_lstm = (time.perf_counter() - t0) * 1000 / max(len(y_test), 1)
         m_lstm = compute_point_metrics(y_test, logits.argmax(dim=-1).cpu().numpy())
-        if source_name == "Synthetic": m_lstm.update(boosts["LSTM-Attention"])
-        m_lstm.update({"Model": "LSTM-Attention", "Data Source": source_name, "latency_ms_per_seq": lat_lstm})
+        m_lstm.update({"Model": "LSTM-Attention", "Data Source": source_name,
+                       "latency_ms_per_seq": lat_lstm, "note": random_weight_note})
         all_results.append(m_lstm)
-        
-        # Evaluate TEN
-        ten = TENSpoofingDetector().to(device)
+
+        ten = TENSpoofingDetector(d_input=n_feat).to(device)
         t0 = time.perf_counter()
         with torch.no_grad():
-            logits = ten(torch.tensor(X_test, device=device))
-        lat_ten = (time.perf_counter() - t0) * 1000 / len(y_test)
+            logits = ten(X_tensor)
+        lat_ten = (time.perf_counter() - t0) * 1000 / max(len(y_test), 1)
         m_ten = compute_point_metrics(y_test, logits.argmax(dim=-1).cpu().numpy())
-        if source_name == "Synthetic": m_ten.update(boosts["TEN"])
-        m_ten.update({"Model": "TEN", "Data Source": source_name, "latency_ms_per_seq": lat_ten})
+        m_ten.update({"Model": "TEN", "Data Source": source_name,
+                      "latency_ms_per_seq": lat_ten, "note": random_weight_note})
         all_results.append(m_ten)
-        
-        # Evaluate TEN-GNN
-        tengnn = TENGNNModel(n_assets=5).to(device)
+
+        # TEN-GNN: replicate single asset across 5 nodes for latency measurement.
+        # For real cross-asset evaluation, supply 5 distinct asset sequences.
+        tengnn = TENGNNModel(n_assets=5, d_input=n_feat).to(device)
+        X_gnn = X_tensor.unsqueeze(1).expand(-1, 5, -1, -1)
         t0 = time.perf_counter()
         with torch.no_grad():
-            # Mocking n_assets for TEN-GNN
-            X_gnn = torch.tensor(X_test, device=device).unsqueeze(1).expand(-1, 5, -1, -1)
             logits = tengnn(X_gnn, torch.eye(5, device=device))
-        lat_gnn = (time.perf_counter() - t0) * 1000 / len(y_test)
+        lat_gnn = (time.perf_counter() - t0) * 1000 / max(len(y_test), 1)
         m_gnn = compute_point_metrics(y_test, logits.argmax(dim=-1).cpu().numpy())
-        if source_name == "Synthetic": m_gnn.update(boosts["TEN-GNN"])
-        m_gnn.update({"Model": "TEN-GNN", "Data Source": source_name, "latency_ms_per_seq": lat_gnn})
+        m_gnn.update({"Model": "TEN-GNN", "Data Source": source_name,
+                      "latency_ms_per_seq": lat_gnn,
+                      "note": f"{random_weight_note}; GNN uses single-asset replication"})
         all_results.append(m_gnn)
 
     evaluate_on_source("Synthetic", data_synth)
-    evaluate_on_source("Real", data_real)
-    
-    # Save & Display
+
     output_json.parent.mkdir(parents=True, exist_ok=True)
     existing_data = {}
     if output_json.exists():
         with open(output_json, "r") as f:
             existing_data = json.load(f)
-            
+
     existing_data["benchmarks_standardized"] = all_results
-    
+
     with open(output_json, "w") as f:
         json.dump(existing_data, f, indent=4)
-        
-    print("\n" + "="*95)
-    print("NOTE: These are unoptimized CPU baseline measurements.")
-    print("Paper target: 600µs on FPGA+GPU with TensorRT INT8.")
-    print("See deployment_tiers.py for optimization roadmap.")
-    print("-" * 95)
-    print(f"{'Model':<20} | {'Source':<10} | {'F1':<6} | {'Prec.':<7} | {'Recall':<6} | {'CPU Latency (ms, bs=1)':<20}")
-    print("-" * 95)
+
+    print("\n" + "=" * 100)
+    print("BENCHMARK RESULTS  (deep models use random weights — F1 is not meaningful until trained)")
+    print("CPU latency numbers are real. Rule-based / LR / RF F1 numbers are real.")
+    print("-" * 100)
+    print(f"{'Model':<22} | {'Source':<10} | {'F1':<6} | {'Prec.':<7} | {'Recall':<6} | {'Latency ms':<12}")
+    print("-" * 100)
     for r in all_results:
-        print(f"{r['Model']:<20} | {r['Data Source']:<10} | {r['f1']:.3f}  | {r['precision']:.3f} | {r['recall']:.3f} | {r['latency_ms_per_seq']:.4f}")
-    print("="*95)
-    logger.info(f"Saved extended benchmark results to {output_json}")
+        print(f"{r['Model']:<22} | {r['Data Source']:<10} | {r['f1']:.3f}  | "
+              f"{r['precision']:.3f} | {r['recall']:.3f} | {r['latency_ms_per_seq']:.4f}")
+    print("=" * 100)
+    logger.info("Saved benchmark results to %s", output_json)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
