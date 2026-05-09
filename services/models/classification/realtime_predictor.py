@@ -87,8 +87,31 @@ def validate_artifact_contract(
         raise ValueError("; ".join(errors))
 
 
-def latest_orderbook_unavailable(df: pd.DataFrame, expected_features: list[str]) -> bool:
+def orderbook_matters(model: xgb.XGBClassifier, expected_features: list[str]) -> bool:
+    """Return True only if orderbook features have non-zero importance in the loaded model.
+
+    When the model was trained on all-zero orderbook data (WebSocket not yet
+    running during the historical period), XGBoost assigns zero importance and
+    the gate must not block inference — the model doesn't need orderbook data.
+    """
     if not any(col in expected_features for col in ORDERBOOK_FEATURES):
+        return False
+    try:
+        imp = model.feature_importances_
+        ob_importance = sum(
+            imp[expected_features.index(f)]
+            for f in ORDERBOOK_FEATURES
+            if f in expected_features
+        )
+        return ob_importance > 0.01
+    except Exception:
+        return False
+
+
+def latest_orderbook_unavailable(df: pd.DataFrame, expected_features: list[str],
+                                  model: xgb.XGBClassifier | None = None) -> bool:
+    if not orderbook_matters(model, expected_features) if model is not None \
+            else not any(col in expected_features for col in ORDERBOOK_FEATURES):
         return False
     if "orderbook_data_available" not in df.columns:
         return False
@@ -248,9 +271,9 @@ def main():
         print("Model inference aborted to prevent random guessing.")
         finish_neutral("INSUFFICIENT FEATURES", details={"missing_features": missing_features})
 
-    if latest_orderbook_unavailable(df, expected_features):
+    if latest_orderbook_unavailable(df, expected_features, model=model):
         print("\nCRITICAL WARNING: No matching orderbook bucket for the latest candle.")
-        print("Model inference aborted because live orderbook features are stale or unavailable.")
+        print("Model inference aborted because live orderbook features carry non-zero importance.")
         finish_neutral("ORDERBOOK UNAVAILABLE")
     
     # Get metadata from the original df (for printing)

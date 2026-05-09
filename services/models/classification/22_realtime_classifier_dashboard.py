@@ -20,6 +20,7 @@ from realtime_predictor import (
     align_latest_features,
     latest_orderbook_unavailable,
     load_expected_features,
+    orderbook_matters,
     score_to_signal,
     validate_artifact_contract,
 )
@@ -36,9 +37,12 @@ def _fmt(value: float, digits: int = 4) -> str:
     return f"{float(value):.{digits}f}"
 
 
-def _signal_for_row(row: pd.Series, expected_features: list[str]) -> tuple[str, str]:
+def _signal_for_row(row: pd.Series, expected_features: list[str],
+                    model: xgb.XGBClassifier | None = None) -> tuple[str, str]:
     if "orderbook_data_available" in row.index:
-        orderbook_missing = latest_orderbook_unavailable(pd.DataFrame([row]), expected_features)
+        orderbook_missing = latest_orderbook_unavailable(
+            pd.DataFrame([row]), expected_features, model=model
+        )
         if orderbook_missing:
             return "NEUTRAL", "ORDERBOOK_UNAVAILABLE"
     return score_to_signal(float(row["prob_up"]))
@@ -68,7 +72,9 @@ def score_feature_rows(
     valid_rows["prob_up"] = probabilities
     valid_rows["prob_down"] = 1.0 - valid_rows["prob_up"]
 
-    decisions = valid_rows.apply(lambda row: _signal_for_row(row, expected_features), axis=1)
+    decisions = valid_rows.apply(
+        lambda row: _signal_for_row(row, expected_features, model=model), axis=1
+    )
     valid_rows["signal"] = [decision[0] for decision in decisions]
     valid_rows["decision_reason"] = [decision[1] for decision in decisions]
 
