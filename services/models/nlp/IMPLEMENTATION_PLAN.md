@@ -415,8 +415,6 @@ services/models/nlp/
 ├── IMPLEMENTATION_PLAN.md             # This file
 ├── requirements.txt                   # Python dependencies
 ├── .env.example                       # Environment variables template
-├── Dockerfile                         # Container definition
-│
 ├── src/
 │   ├── __init__.py
 │   ├── main.py                        # Orchestrator/entrypoint
@@ -476,7 +474,6 @@ services/models/nlp/
 │   ├── processed/                     # Cleaned + sentiment
 │   └── logs/                          # Pipeline execution logs
 │
-└── docker-compose.yml                 # Local dev environment
 ```
 
 ---
@@ -530,7 +527,6 @@ python-dotenv>=0.21         # Environment config
 ### Phase 4 (Week 4): Optimization & Deployment
 - Performance profiling
 - Add Reddit fetcher (optional)
-- Docker containerization
 - Production deployment
 
 ---

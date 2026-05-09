@@ -286,7 +286,7 @@ python services/models/nlp/src/main.py
 python services/models/classification/realtime_sentiment_fetcher.py
 ```
 
-To make it automatic, use cron, systemd, Docker, Airflow, Prefect, or another scheduler.
+To make it automatic, use cron, systemd, Airflow, Prefect, or another scheduler.
 
 Recommended live schedule:
 
