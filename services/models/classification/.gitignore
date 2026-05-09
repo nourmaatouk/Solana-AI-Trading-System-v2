@@ -17,6 +17,7 @@ data/processed/*.csv
 data/processed/*.parquet
 data/processed/*.npy
 data/processed/*.pkl
+data/realtime/
 
 # ─── Trained model weights ──────────────────────────────────
 models/

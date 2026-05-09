@@ -1,59 +1,49 @@
 {
+  "note": "Production model is xgboost_h4.json (46 features, H4=1-hour horizon). The deprecated no_leak model (1888 features, best_iteration=2) is excluded from this report.",
+  "production_model": {
+    "model_file": "services/models/models/xgboost_h4.json",
+    "model_type": "XGBoost Binary Classifier",
+    "horizon": "H4 (4 × 15-min candles = 1 hour)",
+    "n_features": 46,
+    "feature_registry": "services/models/classification/data/processed/feature_columns.json",
+    "target": "triple-barrier: +2.0% take-profit vs -1.5% stop-loss",
+    "confidence_threshold": 0.60
+  },
   "model_info": {
     "model_type": "XGBoost Binary Classifier (Native API)",
-    "n_estimators": 300,
     "max_depth": 6,
     "learning_rate": 0.05,
     "subsample": 0.8,
     "colsample_bytree": 0.8,
     "objective": "binary:logistic"
   },
-  "training_info": {
-    "best_iteration": 2,
-    "early_stopping_rounds": 20,
-    "total_rounds_trained": 300
-  },
-  "dataset_info": {
-    "n_train_samples": 129058,
-    "n_val_samples": 27630,
-    "n_test_samples": 27631,
-    "n_features": 1888,
-    "target_class_distribution_test": {
-      "class_0": 13755,
-      "class_1": 13876
+  "horizon_comparison": {
+    "H4_1hr": {
+      "accuracy": 0.6421,
+      "f1": 0.4011,
+      "auc_roc": 0.6199,
+      "mcc": 0.1463
+    },
+    "H8_2hr": {
+      "accuracy": 0.6228,
+      "f1": 0.3670,
+      "auc_roc": 0.5770,
+      "mcc": 0.1027
+    },
+    "H16_4hr": {
+      "accuracy": 0.5738,
+      "f1": 0.3515,
+      "auc_roc": 0.5376,
+      "mcc": 0.0419
     }
   },
-  "test_metrics": {
-    "accuracy": 0.5093554341138576,
-    "precision": 0.5213149806227448,
-    "recall": 0.2811328913231479,
-    "f1_score": 0.3652792733742216,
-    "auc_roc": 0.516592341640698
-  },
-  "confusion_matrix": {
-    "true_negatives": 10173,
-    "false_positives": 3582,
-    "false_negatives": 9975,
-    "true_positives": 3901,
-    "matrix": [
-      [
-        10173,
-        3582
-      ],
-      [
-        9975,
-        3901
-      ]
-    ]
-  },
-  "validation_metrics_at_best_iteration": {
-    "best_val_logloss": 0.6931368174412266,
-    "best_val_error": 0.49587404994571116,
-    "best_val_auc": 0.5177805831391794
-  },
-  "output_directories": {
-    "validation_curves": "/home/nourmaatouk/Solana-AI-Trading-System/services/models/classification/plots/validation_curves",
-    "test_curves": "/home/nourmaatouk/Solana-AI-Trading-System/services/models/classification/plots/test_curves",
-    "reports": "/home/nourmaatouk/Solana-AI-Trading-System/services/models/classification/reports"
+  "realtime_inference": {
+    "predictor": "services/models/classification/realtime_predictor.py",
+    "active_horizon": "H4",
+    "decision_gate": {
+      "UP": "P(up) >= 0.60",
+      "DOWN": "P(up) <= 0.40",
+      "NEUTRAL": "0.40 < P(up) < 0.60 or data/model health check fails"
+    }
   }
 }

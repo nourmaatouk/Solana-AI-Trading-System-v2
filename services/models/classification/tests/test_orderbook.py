@@ -2,6 +2,8 @@ import pytest
 import pandas as pd
 import numpy as np
 from pathlib import Path
+
+websockets = pytest.importorskip("websockets", reason="websockets not installed — skipping orderbook tests")
 from services.ingest.connectors.binance_orderbook import OrderBookCollector
 
 def test_imbalance_calculation():
