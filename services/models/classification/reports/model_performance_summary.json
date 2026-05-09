@@ -1,40 +1,57 @@
 {
-  "note": "Production model is xgboost_h4.json (46 features, H4=1-hour horizon). The deprecated no_leak model (1888 features, best_iteration=2) is excluded from this report.",
+  "note": "Retrained 2026-05-10 after removing non-stationary Bollinger columns (bb_mid, bb_upper, bb_lower). Feature count: 46 → 43. Production model is xgboost_h4.json (H4 = 1-hour horizon).",
   "production_model": {
     "model_file": "services/models/models/xgboost_h4.json",
     "model_type": "XGBoost Binary Classifier",
     "horizon": "H4 (4 × 15-min candles = 1 hour)",
-    "n_features": 46,
+    "n_features": 43,
     "feature_registry": "services/models/classification/data/processed/feature_columns.json",
     "target": "triple-barrier: +2.0% take-profit vs -1.5% stop-loss",
-    "confidence_threshold": 0.60
+    "confidence_threshold": 0.60,
+    "val_f1_threshold": 0.385
   },
   "model_info": {
-    "model_type": "XGBoost Binary Classifier (Native API)",
-    "max_depth": 6,
+    "model_type": "XGBoost Binary Classifier (sklearn API)",
+    "max_depth": 5,
     "learning_rate": 0.05,
     "subsample": 0.8,
     "colsample_bytree": 0.8,
-    "objective": "binary:logistic"
+    "objective": "binary:logistic",
+    "early_stopping_rounds": 20
   },
   "horizon_comparison": {
     "H4_1hr": {
-      "accuracy": 0.6421,
-      "f1": 0.4011,
-      "auc_roc": 0.6199,
-      "mcc": 0.1463
+      "accuracy": 0.6323,
+      "f1": 0.3997,
+      "auc_roc": 0.6157,
+      "mcc": 0.1347,
+      "val_f1_threshold": 0.385,
+      "cal_f1": 0.4912,
+      "train_samples": 27526,
+      "val_samples": 5899,
+      "test_samples": 5899
     },
     "H8_2hr": {
-      "accuracy": 0.6228,
-      "f1": 0.3670,
-      "auc_roc": 0.5770,
-      "mcc": 0.1027
+      "accuracy": 0.6200,
+      "f1": 0.3858,
+      "auc_roc": 0.5792,
+      "mcc": 0.1121,
+      "val_f1_threshold": 0.325,
+      "cal_f1": 0.4911,
+      "train_samples": 47148,
+      "val_samples": 10103,
+      "test_samples": 10104
     },
     "H16_4hr": {
-      "accuracy": 0.5738,
-      "f1": 0.3515,
-      "auc_roc": 0.5376,
-      "mcc": 0.0419
+      "accuracy": 0.5712,
+      "f1": 0.3516,
+      "auc_roc": 0.5341,
+      "mcc": 0.0383,
+      "val_f1_threshold": 0.335,
+      "cal_f1": 0.5292,
+      "train_samples": 68838,
+      "val_samples": 14751,
+      "test_samples": 14752
     }
   },
   "realtime_inference": {
@@ -45,5 +62,10 @@
       "DOWN": "P(up) <= 0.40",
       "NEUTRAL": "0.40 < P(up) < 0.60 or data/model health check fails"
     }
-  }
+  },
+  "features_removed_vs_prior": [
+    "bb_mid (20-period SMA — absolute price, non-stationary)",
+    "bb_upper (SMA + 2σ — absolute price, non-stationary)",
+    "bb_lower (SMA − 2σ — absolute price, non-stationary)"
+  ]
 }
