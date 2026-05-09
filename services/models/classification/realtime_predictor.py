@@ -11,31 +11,20 @@ import numpy as np
 import pandas as pd
 import xgboost as xgb
 
+from config import (
+    ACTIVE_HORIZON as HORIZON,
+    CONFIDENCE_THRESHOLD,
+    MODEL_DIR,
+    ORDERBOOK_FEATURES,
+    PROCESSED_DIR,
+    REALTIME_DIR,
+)
 
-# =========================================================
-# CONFIG
-# =========================================================
-BASE_DIR = Path(__file__).resolve().parent
-DATA_DIR = BASE_DIR / "data" / "processed"
-MODEL_DIR = BASE_DIR.parent / "models"
-
-FEATURE_PATH = BASE_DIR / "data" / "realtime" / "latest_features_with_sentiment.csv"
-LAST_SIGNAL_PATH = BASE_DIR / "data" / "realtime" / "last_signal.json"
-HORIZON = 4
-FEATURE_COLUMNS_PATH = DATA_DIR / "feature_columns.json"
-SCALER_PATH = DATA_DIR / f"scaler_h{HORIZON}.pkl"
-MODEL_PATH = MODEL_DIR / f"xgboost_h{HORIZON}.json"
-
-CONFIDENCE_THRESHOLD = 0.60
-ORDERBOOK_FEATURES = [
-    "imbalance_mean",
-    "imbalance_std",
-    "spread_mean",
-    "mid_price",
-    "bid_volume_mean",
-    "ask_volume_mean",
-    "pressure_indicator",
-]
+FEATURE_PATH         = REALTIME_DIR / "latest_features_with_sentiment.csv"
+LAST_SIGNAL_PATH     = REALTIME_DIR / "last_signal.json"
+FEATURE_COLUMNS_PATH = PROCESSED_DIR / "feature_columns.json"
+SCALER_PATH          = PROCESSED_DIR / f"scaler_h{HORIZON}.pkl"
+MODEL_PATH           = MODEL_DIR / f"xgboost_h{HORIZON}.json"
 
 
 def load_expected_features(path: Path) -> list[str]:

@@ -4,7 +4,6 @@ import sys
 from pathlib import Path
 
 import pandas as pd
-import numpy as np
 
 
 # =========================================================
@@ -20,7 +19,11 @@ OUTPUT_PATH = BASE_DIR / "data" / "realtime" / "latest_features_with_sentiment.c
 
 sys.path.append(str(NLP_DIR))
 
-from src.contracts.layer2_contract import normalize_layer2_bucket_frame
+try:
+    from src.contracts.layer2_contract import normalize_layer2_bucket_frame
+except ImportError:
+    def normalize_layer2_bucket_frame(df):  # type: ignore[misc]
+        return df
 
 
 def normalize_timestamp(series: pd.Series) -> pd.Series:

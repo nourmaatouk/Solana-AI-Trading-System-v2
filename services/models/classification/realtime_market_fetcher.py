@@ -1,23 +1,19 @@
 from __future__ import annotations
 
 import sys
-from pathlib import Path
-import time
 
 import ccxt
 import pandas as pd
 
+from config import (
+    CANDLE_LIMIT_REALTIME as LIMIT,
+    EXCHANGE as EXCHANGE_NAME,
+    REALTIME_DIR,
+    SYMBOL,
+    TIMEFRAME,
+)
 
-# =========================================================
-# CONFIG
-# =========================================================
-EXCHANGE_NAME = "binance"
-SYMBOL = "SOL/USDT"
-TIMEFRAME = "15m"
-LIMIT = 200  # Fetch 200 to ensure enough for lag features and sequencing
-
-BASE_DIR = Path(__file__).resolve().parent
-OUTPUT_PATH = BASE_DIR / "data" / "realtime" / "latest_sol_15m.csv"
+OUTPUT_PATH = REALTIME_DIR / "latest_sol_15m.csv"
 
 
 def get_exchange(exchange_name: str):

@@ -17,7 +17,6 @@ import json
 import numpy as np
 import pandas as pd
 import xgboost as xgb
-from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import (
     accuracy_score,
     precision_score,
@@ -27,15 +26,21 @@ from sklearn.metrics import (
     confusion_matrix,
 )
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DATA_DIR = PROJECT_ROOT / "data" / "processed"
-MODEL_DIR = PROJECT_ROOT / "models"
+from config import (
+    LEAKAGE_SUBSTRINGS,
+    MODEL_DIR,
+    NON_STATIONARY_COLUMNS,
+    PROCESSED_DIR,
+    TECH_FEATURES_CSV,
+    TRAIN_RATIO,
+    VAL_RATIO,
+    XGB_SEED,
+)
 
-INPUT_PATH = DATA_DIR / "sol_usdt_15m_features_h4.csv"
+INPUT_PATH   = PROCESSED_DIR / TECH_FEATURES_CSV
 RESULTS_PATH = MODEL_DIR / "walk_forward_results.json"
 
-SEQUENCE_LENGTH = 32
-N_FOLDS = 5  # 5 walk-forward periods
+N_FOLDS = 5   # number of walk-forward periods (validation parameter, not a model constant)
 
 print("=" * 90)
 print("🔄 WALK-FORWARD VALIDATION - TRUE OUT-OF-SAMPLE TEST")
@@ -55,9 +60,14 @@ print("[STEP 1] Loading data...")
 
 df = pd.read_csv(INPUT_PATH)
 
-# Extract features (same as honest model)
-DROP_COLUMNS = ["timestamp", "datetime", "target_direction", "future_return_h"]
-feature_columns = [col for col in df.columns if col not in DROP_COLUMNS]
+# Mirror 07_prepare_no_leak_data.py: drop non-stationary + leakage + meta columns
+_ALWAYS_DROP = {"timestamp", "datetime", "target_direction", "future_return_h"}
+feature_columns = [
+    col for col in df.columns
+    if col not in _ALWAYS_DROP
+    and col.lower() not in NON_STATIONARY_COLUMNS
+    and not any(sub in col.lower() for sub in LEAKAGE_SUBSTRINGS)
+]
 
 X_df = df[feature_columns].copy()
 close_prices = df["close"].copy()
@@ -68,9 +78,9 @@ valid_mask = X_df.notna().all(axis=1)
 X_df = X_df.loc[valid_mask].reset_index(drop=True)
 close_prices = close_prices.loc[valid_mask].reset_index(drop=True)
 
-# Create honest target (past data only)
-target_honest = (close_prices > close_prices.shift(4)).astype(int)
-valid_target_mask = target_honest.notna()
+# Forward-looking target: 1 if price 4 bars ahead is higher than current price
+target_honest = (close_prices.shift(-4) > close_prices).astype(int)
+valid_target_mask = target_honest.notna()  # last 4 rows have NaN (no future)
 
 X_honest = X_df.loc[valid_target_mask].reset_index(drop=True)
 target_honest = target_honest.loc[valid_target_mask].reset_index(drop=True)
@@ -147,7 +157,7 @@ for fold in range(N_FOLDS):
         colsample_bytree=0.8,
         objective="binary:logistic",
         eval_metric="logloss",
-        random_state=42,
+        random_state=XGB_SEED,
         tree_method="hist",
         n_jobs=-1,
     )
@@ -232,7 +242,7 @@ print("COMPARISON: STANDARD TEST vs WALK-FORWARD TEST")
 print("=" * 90)
 
 print(f"\n❌ STANDARD TEST (70-15-15 split):")
-print(f"   Test Accuracy: 82.28%")
+print(f"   Test Accuracy: 64.21%  (H4 production model, 46 features, no-leak)")
 print(f"   Problem: Model sees similar market regime in train & test")
 print(f"   Problem: Can memorize patterns")
 
@@ -298,10 +308,10 @@ results = {
         "edge_over_random": float(edge),
     },
     "comparison": {
-        "standard_test_accuracy": 0.8228,
+        "standard_test_accuracy": 0.6421,
         "walk_forward_accuracy": float(mean_acc),
-        "accuracy_drop_percent": 82.28 - mean_acc*100,
-        "interpretation": "Accuracy drop indicates overfitting to standard train-test split"
+        "accuracy_drop_percent": 64.21 - mean_acc*100,
+        "interpretation": "H4 production model (46 features, no-leak); walk-forward uses same feature set"
     }
 }
 

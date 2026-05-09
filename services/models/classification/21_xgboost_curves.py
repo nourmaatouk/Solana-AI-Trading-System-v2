@@ -12,7 +12,6 @@ Comprehensive XGBoost Binary Classification Pipeline:
 This is a complete, self-contained, production-ready script.
 """
 
-from pathlib import Path
 import json
 import numpy as np
 import matplotlib.pyplot as plt
@@ -26,27 +25,28 @@ import xgboost as xgb
 # =========================================================
 # CONFIG AND SETUP
 # =========================================================
-PROJECT_ROOT = Path(__file__).resolve().parent
-DATA_DIR = PROJECT_ROOT / "data" / "processed"
-PLOTS_DIR = PROJECT_ROOT / "plots"
-REPORTS_DIR = PROJECT_ROOT / "reports"
+from config import (
+    ACTIVE_HORIZON as HORIZON,
+    PLOTS_DIR,
+    PROCESSED_DIR as DATA_DIR,
+    REPORTS_DIR,
+    XGB_SEED,
+)
 
 VALIDATION_PLOTS_DIR = PLOTS_DIR / "validation_curves"
-TEST_PLOTS_DIR = PLOTS_DIR / "test_curves"
+TEST_PLOTS_DIR       = PLOTS_DIR / "test_curves"
 
-# Create all output directories
 for dir_path in [VALIDATION_PLOTS_DIR, TEST_PLOTS_DIR, REPORTS_DIR]:
     dir_path.mkdir(parents=True, exist_ok=True)
 
-# Data file paths
-X_TRAIN_PATH = DATA_DIR / "X_train_no_leak.npy"
-Y_TRAIN_PATH = DATA_DIR / "y_train_no_leak.npy"
-X_VAL_PATH = DATA_DIR / "X_val_no_leak.npy"
-Y_VAL_PATH = DATA_DIR / "y_val_no_leak.npy"
-X_TEST_PATH = DATA_DIR / "X_test_no_leak.npy"
-Y_TEST_PATH = DATA_DIR / "y_test_no_leak.npy"
+X_TRAIN_PATH = DATA_DIR / f"X_train_h{HORIZON}.npy"
+Y_TRAIN_PATH = DATA_DIR / f"y_train_h{HORIZON}.npy"
+X_VAL_PATH   = DATA_DIR / f"X_val_h{HORIZON}.npy"
+Y_VAL_PATH   = DATA_DIR / f"y_val_h{HORIZON}.npy"
+X_TEST_PATH  = DATA_DIR / f"X_test_h{HORIZON}.npy"
+Y_TEST_PATH  = DATA_DIR / f"y_test_h{HORIZON}.npy"
 
-REPORT_PATH = REPORTS_DIR / "model_performance_summary.json"
+REPORT_PATH  = REPORTS_DIR / "xgboost_curves_run_summary.json"
 
 # =========================================================
 # PART 0: LOAD DATA
@@ -68,9 +68,10 @@ except FileNotFoundError as e:
     print(f"✗ Error loading data files: {e}")
     print(f"  Expected directory: {DATA_DIR}")
     print(f"  Expected files:")
-    print(f"    - X_train_no_leak.npy, y_train_no_leak.npy")
-    print(f"    - X_val_no_leak.npy, y_val_no_leak.npy")
-    print(f"    - X_test_no_leak.npy, y_test_no_leak.npy")
+    print(f"    - X_train_h{HORIZON}.npy, y_train_h{HORIZON}.npy")
+    print(f"    - X_val_h{HORIZON}.npy, y_val_h{HORIZON}.npy")
+    print(f"    - X_test_h{HORIZON}.npy, y_test_h{HORIZON}.npy")
+    print(f"  Run 07_prepare_no_leak_data.py to generate them.")
     exit(1)
 
 print(f"  X_train shape: {X_train.shape}  y_train shape: {y_train.shape}")
@@ -113,7 +114,7 @@ params = {
     "colsample_bytree": 0.8,
     "tree_method": "hist",
     "eval_metric": ["logloss", "error", "auc"],
-    "random_state": 42,
+    "seed": XGB_SEED,
 }
 
 print("Training model with evaluation sets using native xgb.train...")
