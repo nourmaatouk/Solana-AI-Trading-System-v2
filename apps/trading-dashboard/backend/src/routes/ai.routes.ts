@@ -86,16 +86,28 @@ aiRouter.get('/spoofing', (_req: Request, res: Response) => {
 });
 
 aiRouter.get('/sentiment', (_req: Request, res: Response) => {
-  const data = readJsonFile('sentiment_status.json');
-  if (!data) {
-    res.status(404).json({ error: 'No sentiment data found.' });
+  // sentiment_status.json is a daemon health file — actual sentiment is in last_fused_decision.json
+  const fused = readJsonFile('last_fused_decision.json');
+  if (!fused) {
+    res.status(404).json({ error: 'No sentiment data found. Run the pipeline first.' });
     return;
   }
+  const reasoning = fused.reasoning as Record<string, string> | undefined;
+  const raw = reasoning?.sentiment ?? '';
+  const upper = raw.toUpperCase();
+  const label = upper.includes('POSITIVE') ? 'POSITIVE'
+    : upper.includes('NEGATIVE') ? 'NEGATIVE'
+    : upper.includes('BULLISH') ? 'BULLISH'
+    : upper.includes('BEARISH') ? 'BEARISH'
+    : 'NEUTRAL';
+  const scoreMatch = raw.match(/\(([-\d.]+)\)/);
+  const score = scoreMatch ? parseFloat(scoreMatch[1]) : null;
+  const eventMatch = raw.match(/event=(\S+)/);
   res.json({
-    label: data.label ?? data.status ?? 'UNKNOWN',
-    score: data.score ?? data.sentiment_score ?? null,
-    event_type: data.event_type ?? null,
-    high_impact: data.high_impact ?? false,
+    label,
+    score,
+    event_type: eventMatch ? eventMatch[1] : null,
+    high_impact: (fused.high_impact_event as boolean | undefined) ?? false,
   });
 });
 

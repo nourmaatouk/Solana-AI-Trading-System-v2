@@ -91,8 +91,8 @@ class GdeltFetcher:
                 "title": article.get("title", ""),
                 "url": article.get("url", ""),
                 "published_at": article.get("seendate", ""),
-                "text": article.get("title", ""),
-                "tone": article.get("tone", None) 
+                "text": "",  # GDELT artlist mode returns no article body; title is captured above
+                "gdelt_tone": article.get("tone", None),  # pre-computed GDELT tone (-100..+100), available for future use
             })
             
         return results
