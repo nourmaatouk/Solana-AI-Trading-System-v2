@@ -12,6 +12,7 @@ can be computed from fresh BTC data.
 from __future__ import annotations
 
 import sys
+from typing import Any
 
 import pandas as pd
 
@@ -27,7 +28,7 @@ from exchange_utils import fetch_ohlcv_with_retries, get_exchange
 OUTPUT_PATH = REALTIME_DIR / "latest_btc_15m.csv"
 
 
-def fetch_latest_candles(exchange: ccxt.Exchange, symbol: str, timeframe: str, limit: int) -> pd.DataFrame:
+def fetch_latest_candles(exchange: Any, symbol: str, timeframe: str, limit: int) -> pd.DataFrame:
     print(f"Fetching latest {limit} candles for {symbol} on {timeframe}...")
     try:
         ohlcv = fetch_ohlcv_with_retries(exchange, symbol, timeframe, since=None, limit=limit)

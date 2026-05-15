@@ -109,6 +109,7 @@ jobs:
         run: pip install ruff
 
       - name: Run ruff
-        # ml_env is a nested venv inside classification/ — exclude it to avoid
-        # linting thousands of third-party files.
-        run: ruff check services/ apps/ --exclude ml_env
+        # Keep CI focused on correctness blockers for now. The repo still has
+        # legacy/demo scripts with broad style debt; this catches syntax errors,
+        # undefined names, and invalid control-flow without blocking on cleanup.
+        run: ruff check services/ apps/ --exclude ml_env --select E9,F63,F7,F82

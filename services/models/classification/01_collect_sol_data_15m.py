@@ -54,8 +54,6 @@ def fetch_ohlcv_full_history(
             timeframe=timeframe,
             since=since,
             limit=limit_per_call,
-            max_retries=MAX_RETRIES,
-            retry_sleep_seconds=RETRY_SLEEP_SECONDS,
         )
 
         if not batch:
