@@ -1,0 +1,38 @@
+{
+  "horizon": 4,
+  "in_dim": 47,
+  "hidden": [
+    256,
+    128,
+    64
+  ],
+  "dropout": 0.2,
+  "confidence_threshold": 0.69,
+  "stacker_weights": {
+    "xgb": 0.620934872667058,
+    "dnn": 3.221195503738208
+  },
+  "test_metrics": [
+    {
+      "name": "XGBoost",
+      "auc": 0.5899,
+      "gated_acc": 0.7015,
+      "n_signals": 2871,
+      "n_total": 5897
+    },
+    {
+      "name": "DNN",
+      "auc": 0.6181,
+      "gated_acc": 0.8259,
+      "n_signals": 1189,
+      "n_total": 5897
+    },
+    {
+      "name": "Fusion",
+      "auc": 0.6159,
+      "gated_acc": 0.7737,
+      "n_signals": 2801,
+      "n_total": 5897
+    }
+  ]
+}

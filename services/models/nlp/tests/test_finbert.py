@@ -12,7 +12,7 @@ def mocked_analyzer(monkeypatch):
 
     class MockTokenizer:
         def __call__(self, text, *args, **kwargs):
-            return {"input_ids": [1, 2, 3]}
+            return {"input_ids": torch.tensor([[1, 2, 3]])}
 
     class MockModelOutputs:
         # Mocking Logits to heavily skew positive (e.g [positive, negative, neutral])
@@ -20,7 +20,9 @@ def mocked_analyzer(monkeypatch):
 
     class MockModel:
         def eval(self):
-            pass
+            return self
+        def to(self, device):
+            return self
         def __call__(self, **kwargs):
             return MockModelOutputs()
 

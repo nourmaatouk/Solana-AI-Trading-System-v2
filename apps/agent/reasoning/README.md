@@ -1,19 +1,20 @@
 # Agent Reasoning
 
-Advanced reasoning engines for decision-making and strategy planning.
+**Status: Not yet implemented.** No code exists in this directory.
 
-## Purpose
+This directory is reserved for the LLM reasoning layer (Phase 5).
 
-Implements reasoning systems for:
-- Multi-step strategy planning
-- Risk-adjusted decision making
-- Contextual reasoning about market conditions
-- Explanation generation for trading decisions
-- Constraint satisfaction and rule-based filtering
+## Planned
 
-## Components
+Once the agent layer is built, this module will:
 
-- Strategy planners
-- Decision tree evaluators
-- Constraint validators
-- Explanation generators
+- Receive the fused signal + ChromaDB memory context
+- Call Ollama Llama 3 locally to generate structured reasoning
+- Return a human-readable explanation alongside the trade decision
+- Log reasoning for audit and strategy review
+
+## Prerequisites
+
+- Working ElizaOS orchestrator
+- ChromaDB memory (`apps/agent/memory/`) populated with past decisions
+- Ollama installed and Llama 3 model downloaded

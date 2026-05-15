@@ -15,16 +15,28 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
     LOG_LEVEL: str = "INFO"
 
-    # RSS Feeds List
+    # RSS Feeds List — ordered by Solana relevance
     RSS_FEEDS: List[str] = [
+        # Crypto-native with strong Solana coverage
         "https://www.coindesk.com/arc/outboundfeeds/rss/",
+        "https://cointelegraph.com/feed/",
         "https://cryptoslate.com/feed/",
-        "https://cointelegraph.com/feed/"
+        "https://decrypt.co/feed",
+        "https://theblock.co/rss.xml",
+        "https://beincrypto.com/feed/",
+        # Solana ecosystem
+        "https://solana.com/news/rss.xml",
     ]
-    
+
     # GDELT Configuration
-    GDELT_KEYWORDS: List[str] = ["Solana", "SOL token", "Solana blockchain"]
-    GDELT_FETCH_INTERVAL_MINUTES: int = 5
+    # lookback must be >= 15 min (GDELT update cadence); 60 min gives one full
+    # candle window and avoids the frequent empty-result fallback
+    GDELT_KEYWORDS: List[str] = [
+        "Solana", "SOL token", "Solana blockchain",
+        "SOL price", "Solana DeFi", "Jupiter exchange",
+        "Raydium", "Solana ETF",
+    ]
+    GDELT_FETCH_INTERVAL_MINUTES: int = 60
 
     # FinBERT Settings
     MAX_TEXT_LENGTH: int = 512
@@ -39,8 +51,8 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
     REDIS_TTL_SECONDS: int = 3600
 
-    # TimescaleDB
-    TIMESCALE_DSN: str = "postgresql://postgres:password@localhost:5432/trading"
+    # TimescaleDB — set TIMESCALE_DSN env var in production; no default credentials
+    TIMESCALE_DSN: str = ""
 
     # Reddit Fetcher
     REDDIT_SUBREDDITS: List[str] = ["solana", "CryptoCurrency", "CryptoMarkets"]

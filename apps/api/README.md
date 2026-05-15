@@ -1,27 +1,41 @@
 # API Server
 
-FastAPI backend serving as the central communication hub for the trading system.
+**Status: Minimal implementation — read-only monitoring endpoints only.**
 
-## Structure
+`apps/api/main.py` exposes a FastAPI backend that serves the realtime pipeline
+outputs over HTTP.  No authentication, no writes to the model pipeline.
 
-- **middleware/** - Request/response processing, authentication, logging, CORS handling
-- **routers/** - API endpoint definitions organized by functionality (trading, data, analytics)
-- **schemas/** - Request/response validation schemas and data models
+## Running
 
-## Purpose
+```bash
+pip install -r apps/api/requirements.txt
+uvicorn apps.api.main:app --reload --port 8000
+```
 
-The API layer provides:
-- RESTful endpoints for system control and monitoring
-- Real-time data streaming endpoints
-- Trading signal and analytics endpoints
-- Health checks and system status
+## Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/` | Service info and endpoint list |
+| GET | `/health` | Liveness check |
+| GET | `/signal` | Latest fused trading signal (`last_fused_decision.json`) |
+| GET | `/status` | Last pipeline run summary (`last_pipeline_run.json`) |
+| GET | `/paper-trading` | Paper trading metrics and open position |
+| GET | `/preferences` | Current user preferences |
+| POST | `/preferences` | Update preferences (asset, risk_level, trading_mode, etc.) |
+| GET | `/system` | Aggregated health of all data files |
+
+## What is not implemented yet
+
 - Authentication and authorization
-- Request validation and error handling
+- WebSocket push for live signal updates
+- Rate limiting
+- Endpoints for controlling the pipeline (start/stop/retrain)
+- Multi-user support
+- Integration with Solana wallet or execution layer
 
-## Key Features
+## Tests
 
-- Sub-millisecond request handling
-- WebSocket support for real-time updates
-- Rate limiting and DDoS protection
-- Comprehensive logging and monitoring
-- Async request processing
+```bash
+python -m pytest apps/api/tests/ -v
+```

@@ -1,0 +1,70 @@
+"""
+realtime_btc_fetcher.py
+
+Fetches the latest BTC/USDT 15m candles from Binance and writes them to
+    data/realtime/latest_btc_15m.csv
+
+Run before realtime_feature_builder.py so that BTC co-features
+(btc_return_4, btc_return_16, btc_vol_12, btc_vs_sma20, btc_rsi_14)
+can be computed from fresh BTC data.
+"""
+
+from __future__ import annotations
+
+import sys
+
+import pandas as pd
+
+from config import (
+    BTC_SYMBOL,
+    CANDLE_LIMIT_REALTIME as LIMIT,
+    EXCHANGE as EXCHANGE_NAME,
+    REALTIME_DIR,
+    TIMEFRAME,
+)
+from exchange_utils import fetch_ohlcv_with_retries, get_exchange
+
+OUTPUT_PATH = REALTIME_DIR / "latest_btc_15m.csv"
+
+
+def fetch_latest_candles(exchange: ccxt.Exchange, symbol: str, timeframe: str, limit: int) -> pd.DataFrame:
+    print(f"Fetching latest {limit} candles for {symbol} on {timeframe}...")
+    try:
+        ohlcv = fetch_ohlcv_with_retries(exchange, symbol, timeframe, since=None, limit=limit)
+    except Exception as e:
+        print(f"Error fetching {symbol} from exchange after retries: {type(e).__name__}: {e}")
+        sys.exit(1)
+
+    if not ohlcv:
+        print(f"Error: No data returned for {symbol}.")
+        sys.exit(1)
+
+    df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
+    df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
+    df = df.sort_values("timestamp").reset_index(drop=True)
+    return df
+
+
+def main() -> None:
+    print("=" * 60)
+    print("Real-time BTC Fetcher Starting")
+    print("=" * 60)
+
+    exchange = get_exchange(EXCHANGE_NAME)
+    df = fetch_latest_candles(exchange, BTC_SYMBOL, TIMEFRAME, LIMIT)
+
+    count = len(df)
+    print(f"Fetched {count} BTC candles.")
+    if count < 50:
+        print(f"WARNING: only {count} candles — may not be enough for btc_rsi_14 (needs 14+) or btc_return_16.")
+
+    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(OUTPUT_PATH, index=False)
+
+    print(f"BTC data saved to: {OUTPUT_PATH}")
+    print(f"Most recent BTC candle (UTC): {df['datetime'].iloc[-1]}")
+    print("=" * 60)
+
+
+if __name__ == "__main__":
+    main()

@@ -5,6 +5,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from indicators import compute_atr, compute_macd, compute_rsi
+
 
 # =========================================================
 # CONFIG
@@ -16,72 +18,27 @@ OUTPUT_PATH = PROJECT_ROOT / "data" / "processed" / "sol_usdt_15m_features_h4.cs
 
 
 # =========================================================
-# INDICATOR FUNCTIONS
-# =========================================================
-def compute_rsi(series: pd.Series, period: int = 14) -> pd.Series:
-    """
-    Compute Relative Strength Index (RSI).
-
-    RSI is a momentum indicator:
-    - high RSI can indicate overbought conditions
-    - low RSI can indicate oversold conditions
-    """
-    delta = series.diff()
-
-    gain = delta.clip(lower=0)
-    loss = -delta.clip(upper=0)
-
-    avg_gain = gain.rolling(period).mean()
-    avg_loss = loss.rolling(period).mean()
-
-    rs = avg_gain / (avg_loss + 1e-12)
-    rsi = 100 - (100 / (1 + rs))
-    return rsi
-
-
-def compute_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
-    """
-    Compute Average True Range (ATR).
-
-    ATR measures volatility using high, low, and previous close.
-    """
-    high = df["high"]
-    low = df["low"]
-    close = df["close"]
-
-    prev_close = close.shift(1)
-
-    tr1 = high - low
-    tr2 = (high - prev_close).abs()
-    tr3 = (low - prev_close).abs()
-
-    true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-    atr = true_range.rolling(period).mean()
-    return atr
-
-
-def compute_macd(series: pd.Series,
-                 fast: int = 12,
-                 slow: int = 26,
-                 signal: int = 9) -> tuple[pd.Series, pd.Series, pd.Series]:
-    """
-    Compute MACD line, signal line, and histogram.
-    """
-    ema_fast = series.ewm(span=fast, adjust=False).mean()
-    ema_slow = series.ewm(span=slow, adjust=False).mean()
-
-    macd_line = ema_fast - ema_slow
-    signal_line = macd_line.ewm(span=signal, adjust=False).mean()
-    macd_hist = macd_line - signal_line
-
-    return macd_line, signal_line, macd_hist
-
-
-# =========================================================
 # FEATURE ENGINEERING
 # =========================================================
+def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
+    dt = pd.to_datetime(df["datetime"], utc=True)
+    hour = dt.dt.hour
+    dow  = dt.dt.dayofweek
+    df["hour_sin"]   = np.sin(2 * np.pi * hour / 24)
+    df["hour_cos"]   = np.cos(2 * np.pi * hour / 24)
+    df["dow_sin"]    = np.sin(2 * np.pi * dow / 7)
+    df["dow_cos"]    = np.cos(2 * np.pi * dow / 7)
+    df["is_weekend"] = (dow >= 5).astype(np.int8)
+    return df
+
+
 def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
+
+    # -----------------------------------------------------
+    # Time-of-day / day-of-week (cyclical encoding)
+    # -----------------------------------------------------
+    out = add_time_features(out)
 
     # -----------------------------------------------------
     # Basic lagged returns
@@ -120,6 +77,10 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     out["macd_line"] = macd_line
     out["macd_signal"] = signal_line
     out["macd_hist"] = macd_hist
+    # Stationary MACD — normalised by close price
+    out["macd_line_pct"]   = macd_line   / (out["close"] + 1e-12)
+    out["macd_signal_pct"] = signal_line / (out["close"] + 1e-12)
+    out["macd_hist_pct"]   = macd_hist   / (out["close"] + 1e-12)
 
     # -----------------------------------------------------
     # Bollinger Bands
@@ -182,7 +143,10 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     out["upper_shadow"] = out["high"] - out[["open", "close"]].max(axis=1)
     out["lower_shadow"] = out[["open", "close"]].min(axis=1) - out["low"]
 
-    out["body_to_range"] = out["candle_body"] / ((out["high"] - out["low"]) + 1e-12)
+    out["body_to_range"]    = out["candle_body"]  / ((out["high"] - out["low"]) + 1e-12)
+    # Stationary shadow sizes — normalised by close price
+    out["upper_shadow_pct"] = out["upper_shadow"] / (out["close"] + 1e-12)
+    out["lower_shadow_pct"] = out["lower_shadow"] / (out["close"] + 1e-12)
 
     # Remove rows with NaN caused by rolling windows
     out = out.dropna().reset_index(drop=True)

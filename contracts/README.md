@@ -1,23 +1,28 @@
 # Solana Smart Contracts
 
-Anchor smart contracts for on-chain trading logic and risk management.
+**Status: Not yet implemented.** No Rust or Anchor code exists in this directory.
 
-## Structure
+All subdirectories (`programs/trader/src/`, `migrations/`, `tests/`) contain
+only README placeholder files.
 
-- **migrations/** - Contract deployment and initialization scripts
-- **programs/** - Anchor program definitions
-- **tests/** - Smart contract test suite
+## Planned (Phase 6)
 
-## Purpose
+Once the execution layer is validated on devnet, this directory will contain
+Anchor programs for optional on-chain risk management:
 
-Implements:
-- Core trading logic on-chain
-- Position tracking and management
-- Risk management constraints
-- Circuit breakers and emergency stops
-- Fee collection and distribution
-- Access control and security measures
+- Position tracking and emergency stop (circuit breaker)
+- Fee collection
+- Access control
 
-## Key Programs
+## When to implement
 
-- **trader/** - Main trading contract for order execution and position management
+Smart contracts are **not required** for the first version of on-chain execution.
+The initial execution path will use Jupiter/Raydium via the Solana Agent Kit
+(off-chain instruction building + signing).  Anchor contracts are an optional
+hardening step for production.
+
+## Prerequisites
+
+- Devnet execution stable for ≥2 weeks
+- `services/execution/` risk checks implemented
+- Solana Agent Kit plugin complete

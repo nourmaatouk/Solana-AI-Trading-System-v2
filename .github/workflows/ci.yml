@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  push:
+    branches: [main, fusion]
+  pull_request:
+    branches: [main, fusion]
+
+# Cancel in-progress runs for the same branch when a new commit is pushed.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── 1. XGBoost classification pipeline ──────────────────────────────────────
+  test-classification:
+    name: Classification Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: services/models/classification/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r services/models/classification/requirements.txt pytest
+
+      - name: Run tests
+        run: pytest services/models/classification/tests/ -v
+
+  # ── 2. FinBERT / NLP sentiment pipeline ─────────────────────────────────────
+  # NOTE: must NOT run in the same pytest session as spoofing_detection/ because
+  # both packages export a top-level `src` package (see services/models/conftest.py).
+  test-nlp:
+    name: NLP Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: services/models/nlp/requirements.txt
+
+      - name: Install dependencies
+        # psycopg2-binary ships its own libpq — no system package needed.
+        run: pip install -r services/models/nlp/requirements.txt
+
+      - name: Run tests
+        run: pytest services/models/nlp/tests/ -v
+
+  # ── 3. Fusion aggregator + TEN-GNN spoofing detection ───────────────────────
+  # NOTE: must NOT run in the same pytest session as nlp/ (src namespace collision).
+  # torch-geometric is NOT required — spoofing tests only use torch + scipy.
+  test-fusion-spoofing:
+    name: Fusion & Spoofing Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        # CPU-only torch keeps the download under 200 MB instead of ~2 GB.
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install scipy numpy pandas xgboost scikit-learn pytest
+
+      - name: Run tests
+        run: pytest services/models/fusion/tests/ services/models/spoofing_detection/tests/ -v
+
+  # ── 4. Security + ML quality audit ──────────────────────────────────────────
+  test-audit:
+    name: Security & ML Audit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install xgboost scikit-learn joblib pydantic pydantic-settings pytest
+
+      - name: Run tests
+        run: pytest services/models/tests/ -v
+
+  # ── 5. Lint ──────────────────────────────────────────────────────────────────
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Run ruff
+        # ml_env is a nested venv inside classification/ — exclude it to avoid
+        # linting thousands of third-party files.
+        run: ruff check services/ apps/ --exclude ml_env

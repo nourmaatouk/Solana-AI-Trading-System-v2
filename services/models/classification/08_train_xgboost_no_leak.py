@@ -32,6 +32,7 @@ from config import (
     XGB_SEED,
     XGB_SUBSAMPLE,
 )
+from training_utils import calibrate_threshold
 
 MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -54,18 +55,6 @@ def evaluate(y_true: np.ndarray, y_prob: np.ndarray, threshold: float = 0.5) -> 
         "threshold": float(threshold),
     }
 
-
-def calibrate_threshold(y_val: np.ndarray, val_probs: np.ndarray) -> float:
-    """Sweep thresholds on the val set and return the one maximising F1."""
-    thresholds = np.linspace(0.05, 0.95, 181)
-    f1s = np.array([
-        f1_score(y_val, (val_probs >= t).astype(int), zero_division=0)
-        for t in thresholds
-    ])
-    best_thresh = float(thresholds[f1s.argmax()])
-    print(f"  Val-F1 calibration: best threshold = {best_thresh:.3f} "
-          f"(F1 = {f1s.max():.4f})")
-    return best_thresh
 
 
 def plot_feature_importance(model: xgb.XGBClassifier, feature_names: list[str], horizon: int) -> None:

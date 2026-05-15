@@ -12,6 +12,9 @@ def test_build_steps_allows_skipping_expensive_fetches():
         skip_market=True,
         skip_sentiment=True,
         skip_dashboard=False,
+        paper_trade=False,
+        fusion=False,
+        fusion_aggregate=False,
     )
 
     step_names = [step.name for step in build_steps(args)]

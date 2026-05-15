@@ -1,109 +1,29 @@
 from __future__ import annotations
 
 import time
-from pathlib import Path
 from typing import Optional
 
-import ccxt
 import numpy as np
 import pandas as pd
 
+from config import (
+    ACTIVE_HORIZON as HORIZON_CANDLES,
+    CANDLE_LIMIT_HISTORY as LIMIT_PER_CALL,
+    DATA_DIR,
+    EXCHANGE as EXCHANGE_NAME,
+    PROCESSED_DIR,
+    SYMBOL,
+    TIMEFRAME,
+)
+from exchange_utils import fetch_ohlcv_with_retries, get_exchange, timeframe_to_milliseconds
 
-# =========================================================
-# CONFIG
-# =========================================================
-EXCHANGE_NAME = "binance"
-SYMBOL = "SOL/USDT"
-TIMEFRAME = "15m"
 START_DATE = "2021-01-01"
-END_DATE = None
+END_DATE   = None
 
-# Smaller limit = less heavy request = fewer timeout problems
-LIMIT_PER_CALL = 500
-
-# 4 candles ahead = 1 hour horizon
-HORIZON_CANDLES = 4
-
-# Retry settings
-MAX_RETRIES = 5
-RETRY_SLEEP_SECONDS = 5
-
-PROJECT_ROOT = Path(__file__).resolve().parent
-RAW_DIR = PROJECT_ROOT / "data" / "raw"
-PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
+RAW_DIR = DATA_DIR / "raw"
 
 RAW_DIR.mkdir(parents=True, exist_ok=True)
 PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
-
-
-# =========================================================
-# EXCHANGE SETUP
-# =========================================================
-def get_exchange(exchange_name: str):
-    """
-    Create exchange object with a longer timeout.
-    """
-    exchange_class = getattr(ccxt, exchange_name)
-    exchange = exchange_class(
-        {
-            "enableRateLimit": True,
-            "timeout": 30000,  # 30 seconds
-        }
-    )
-    exchange.load_markets()
-    return exchange
-
-
-# =========================================================
-# TIMEFRAME HELPER
-# =========================================================
-def timeframe_to_milliseconds(timeframe: str) -> int:
-    unit = timeframe[-1]
-    value = int(timeframe[:-1])
-
-    if unit == "m":
-        return value * 60 * 1000
-    if unit == "h":
-        return value * 60 * 60 * 1000
-    if unit == "d":
-        return value * 24 * 60 * 60 * 1000
-
-    raise ValueError(f"Unsupported timeframe: {timeframe}")
-
-
-# =========================================================
-# SAFE FETCH WITH RETRIES
-# =========================================================
-def fetch_ohlcv_with_retries(
-    exchange,
-    symbol: str,
-    timeframe: str,
-    since: int,
-    limit: int,
-    max_retries: int = 5,
-    retry_sleep_seconds: int = 5,
-):
-    """
-    Fetch one OHLCV batch with retries if timeout/network error happens.
-    """
-    last_error = None
-
-    for attempt in range(1, max_retries + 1):
-        try:
-            batch = exchange.fetch_ohlcv(
-                symbol=symbol,
-                timeframe=timeframe,
-                since=since,
-                limit=limit,
-            )
-            return batch
-
-        except (ccxt.RequestTimeout, ccxt.NetworkError) as e:
-            last_error = e
-            print(f"[Retry {attempt}/{max_retries}] Network/timeout error: {e}")
-            time.sleep(retry_sleep_seconds)
-
-    raise last_error
 
 
 # =========================================================
@@ -224,7 +144,7 @@ def main():
     print(f"Limit per call     : {LIMIT_PER_CALL}")
     print()
 
-    exchange = get_exchange(EXCHANGE_NAME)
+    exchange = get_exchange(EXCHANGE_NAME, load_markets=True)
 
     if SYMBOL not in exchange.symbols:
         raise ValueError(f"{SYMBOL} not found on {EXCHANGE_NAME}")
@@ -243,11 +163,11 @@ def main():
         horizon_candles=HORIZON_CANDLES,
     )
 
-    raw_csv = RAW_DIR / f"sol_usdt_{TIMEFRAME}_raw.csv"
-    raw_parquet = RAW_DIR / f"sol_usdt_{TIMEFRAME}_raw.parquet"
-
-    processed_csv = PROCESSED_DIR / f"sol_usdt_{TIMEFRAME}_direction_h{HORIZON_CANDLES}.csv"
-    processed_parquet = PROCESSED_DIR / f"sol_usdt_{TIMEFRAME}_direction_h{HORIZON_CANDLES}.parquet"
+    sym_slug = SYMBOL.replace("/", "_").lower()
+    raw_csv           = RAW_DIR       / f"{sym_slug}_{TIMEFRAME}_raw.csv"
+    raw_parquet       = RAW_DIR       / f"{sym_slug}_{TIMEFRAME}_raw.parquet"
+    processed_csv     = PROCESSED_DIR / f"{sym_slug}_{TIMEFRAME}_direction_h{HORIZON_CANDLES}.csv"
+    processed_parquet = PROCESSED_DIR / f"{sym_slug}_{TIMEFRAME}_direction_h{HORIZON_CANDLES}.parquet"
 
     raw_df.to_csv(raw_csv, index=False)
     raw_df.to_parquet(raw_parquet, index=False)

@@ -1,0 +1,27 @@
+[Unit]
+Description=Solana AI realtime Binance orderbook collector
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=300
+
+[Service]
+Type=simple
+User=solana-ai
+Group=solana-ai
+EnvironmentFile=/etc/default/realtime-orderbook-collector
+WorkingDirectory=/
+ExecStart=/usr/bin/env bash -lc 'cd "$APP_DIR" && exec "$PYTHON_BIN" services/models/classification/realtime_orderbook_collector.py --symbol "$ORDERBOOK_SYMBOL" --top-n "$ORDERBOOK_TOP_N" --flush-interval "$ORDERBOOK_FLUSH_INTERVAL" --max-rows "$ORDERBOOK_MAX_ROWS"'
+Restart=always
+RestartSec=10
+StartLimitBurst=10
+KillSignal=SIGTERM
+TimeoutStopSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=realtime-orderbook-collector
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

@@ -77,9 +77,9 @@ def test_rss_fetcher(monkeypatch):
                     self.feed = {"title": "Valid News"}
                     self.entries = [
                         {
-                            "title": "Valid Headline", 
-                            "link": "http://valid.com/article", 
-                            "published": "2026-04-29"
+                            "title": "Solana token surges on DeFi news",
+                            "link": "http://valid.com/article",
+                            "published": "2026-04-29",
                         }
                     ]
             return ValidFeed()

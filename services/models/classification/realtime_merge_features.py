@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -30,6 +31,20 @@ def normalize_timestamp(series: pd.Series) -> pd.Series:
     if pd.api.types.is_numeric_dtype(series):
         return pd.to_datetime(series, unit="ms", errors="coerce", utc=True)
     return pd.to_datetime(series, errors="coerce", utc=True, format="mixed")
+
+
+ORDERBOOK_STALE_MINUTES = 30
+
+
+def _orderbook_staleness_minutes(df_orderbook: pd.DataFrame) -> float | None:
+    """Return how many minutes ago the latest orderbook row was written, or None."""
+    if "timestamp" not in df_orderbook.columns or df_orderbook.empty:
+        return None
+    latest = pd.to_datetime(df_orderbook["timestamp"], errors="coerce", utc=True, format="mixed").max()
+    if pd.isna(latest):
+        return None
+    now = datetime.now(timezone.utc)
+    return (now - latest).total_seconds() / 60.0
 
 
 def resample_orderbook_15m(df_orderbook: pd.DataFrame) -> pd.DataFrame:
@@ -123,6 +138,19 @@ def main():
         df_orderbook = None
     else:
         df_orderbook = pd.read_csv(ORDERBOOK_PATH)
+        stale_min = _orderbook_staleness_minutes(df_orderbook)
+        if stale_min is None:
+            print("Warning: Orderbook CSV has no parseable timestamps — treating as unavailable.")
+            df_orderbook = None
+        elif stale_min > ORDERBOOK_STALE_MINUTES:
+            print(
+                f"Warning: Orderbook data is {stale_min:.1f} min old "
+                f"(threshold={ORDERBOOK_STALE_MINUTES} min) — "
+                f"treating as unavailable. Start realtime_orderbook_collector.py."
+            )
+            df_orderbook = None
+        else:
+            print(f"Orderbook data age: {stale_min:.1f} min (fresh)")
 
     df_tech = pd.read_csv(TECH_PATH)
     

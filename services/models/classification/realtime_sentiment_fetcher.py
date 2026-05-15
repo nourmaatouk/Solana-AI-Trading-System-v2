@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import sys
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import List
 
@@ -112,10 +114,17 @@ def main():
         seen_urls = load_cached_urls()
         print(f"Loaded {len(seen_urls)} cached URLs.")
 
-        # 1. Fetch latest articles
-        print("Fetching GDELT and RSS articles...")
-        gdelt_articles = GdeltFetcher().fetch()
-        rss_articles = RssFetcher().fetch()
+        # 1. Fetch GDELT and all RSS feeds in parallel
+        print("Fetching GDELT and RSS articles (parallel)...")
+        t0 = time.monotonic()
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            gdelt_future = pool.submit(GdeltFetcher().fetch)
+            rss_future   = pool.submit(RssFetcher().fetch)
+            gdelt_articles = gdelt_future.result()
+            rss_articles   = rss_future.result()
+        elapsed = time.monotonic() - t0
+        print(f"  Fetch done in {elapsed:.1f}s  "
+              f"(GDELT={len(gdelt_articles)}  RSS={len(rss_articles)})")
         all_articles = gdelt_articles + rss_articles
         
         # Deduplicate
@@ -127,11 +136,13 @@ def main():
             df_final = get_decayed_row()
         else:
             print(f"Processing {len(fresh_articles)} new articles with FinBERT...")
-            
+
             # 2. Extract sentiment
+            # threshold=2.5 requires ≥1 Solana/SOL keyword hit (1.5 pts) plus
+            # either a second keyword (1.0 pt) or a long-form article (1.0 pt).
+            # This prevents off-topic crypto articles from polluting the signal.
             analyzer = FinBertSentimentAnalyzer()
-            # Note: relevance_threshold=1.0 is handled inside process_articles
-            df_processed = process_articles(fresh_articles, analyzer=analyzer, relevance_threshold=1.0)
+            df_processed = process_articles(fresh_articles, analyzer=analyzer, relevance_threshold=2.5)
             
             if df_processed.empty:
                 print("No relevant articles after filtering. Applying sentiment decay fallback.")

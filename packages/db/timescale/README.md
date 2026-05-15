@@ -1,29 +1,13 @@
 # TimescaleDB Client
 
-Time-series database client for market data and analytics.
+**Status: Not yet implemented.** No Python client code exists in this directory.
 
-## Structure
+The NLP module (`services/models/nlp/src/storage/timescale_writer.py`) contains
+a standalone TimescaleDB writer used by the sentiment pipeline.  This package
+directory is reserved for a shared client wrapper when multiple services need
+database access.
 
-- **migrations/** - Database schema migrations
+## When to implement
 
-## Purpose
-
-Provides:
-- Time-series data storage
-- Hypertable management
-- Continuous aggregates
-- Query optimization for time-series
-
-## Usage
-
-Stores:
-- OHLCV candlestick data
-- Trade history
-- Performance metrics
-- Analytics and reports
-
-## Features
-
-- Automatic data compression
-- Continuous aggregates for fast queries
-- Partitioning by time for performance
+When the project moves beyond CSV-based storage and multiple services need
+a shared TimescaleDB instance (likely Phase 3+).

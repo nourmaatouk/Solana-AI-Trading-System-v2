@@ -11,7 +11,7 @@ import numpy as np
 from datetime import datetime, timedelta
 
 # Setup paths
-WORKSPACE_ROOT = Path('/home/nourmaatouk/Solana-AI-Trading-System')
+WORKSPACE_ROOT = Path(__file__).resolve().parents[3]
 MODELS_ROOT = WORKSPACE_ROOT / 'services' / 'models'
 
 sys.path.insert(0, str(MODELS_ROOT / 'nlp' / 'src'))

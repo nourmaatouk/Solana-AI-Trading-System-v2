@@ -1,0 +1,27 @@
+[Unit]
+Description=Solana AI realtime sentiment daemon (FinBERT + GDELT + RSS)
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=300
+
+[Service]
+Type=simple
+User=solana-ai
+Group=solana-ai
+EnvironmentFile=/etc/default/realtime-sentiment-daemon
+WorkingDirectory=/
+ExecStart=/usr/bin/env bash -lc 'cd "$APP_DIR" && exec "$PYTHON_BIN" services/models/classification/realtime_sentiment_daemon.py --interval "$SENTIMENT_INTERVAL"'
+Restart=always
+RestartSec=30
+StartLimitBurst=5
+KillSignal=SIGTERM
+TimeoutStopSec=60
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=realtime-sentiment-daemon
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

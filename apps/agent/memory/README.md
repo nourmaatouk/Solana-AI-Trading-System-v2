@@ -1,18 +1,20 @@
 # Agent Memory
 
-Memory systems for maintaining agent state, decision history, and learned patterns.
+**Status: Not yet implemented.** No code exists in this directory.
 
-## Purpose
+This directory is reserved for ChromaDB-based episodic memory (Phase 5).
 
-- Stores trading history and decision rationale
-- Maintains contextual information across trading sessions
-- Enables experience replay and pattern learning
-- Supports performance analysis and audit trails
+## Planned
 
-## Implementation
+Once the agent layer is built, this module will:
 
-Agent memory handles:
-- Session persistence
-- Decision history logging
-- Performance metrics tracking
-- Strategy parameter storage
+- Store each fused trade decision as a vector embedding in ChromaDB
+- Allow the LLM reasoning layer (Ollama Llama 3) to retrieve similar past
+  decisions for contextual reasoning
+- Persist trade rationale across sessions
+
+## Prerequisites
+
+- Working ElizaOS orchestrator integration
+- ChromaDB client in `packages/db/chroma/`
+- Defined embedding schema for trade decisions

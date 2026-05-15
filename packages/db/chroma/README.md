@@ -1,19 +1,18 @@
 # ChromaDB Client
 
-Vector database client for embeddings and semantic search.
+**Status: Not yet implemented.** No code exists in this directory.
 
-## Purpose
+This directory is reserved for the ChromaDB vector database client (Phase 5).
 
-Provides:
-- Embedding storage and retrieval
-- Semantic similarity search
-- Collection management
-- Query optimization
+## Planned
 
-## Usage
+A Python client wrapper that provides:
 
-Used for:
-- Storing document embeddings
-- Finding similar market events
-- Contextual information retrieval
-- ML feature embeddings
+- Collection creation and management for trade decision embeddings
+- Semantic similarity search over past trade decisions
+- Upsert and query interface for the agent memory layer
+
+## Prerequisites
+
+- Agent memory schema defined (`apps/agent/memory/`)
+- ChromaDB installed (`pip install chromadb`)

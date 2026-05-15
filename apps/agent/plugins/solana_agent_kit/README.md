@@ -1,21 +1,30 @@
-# Solana Agent Kit
+# Solana Agent Kit Plugin
 
-Integration plugin for Solana blockchain interactions and trading execution.
+**Status: Not yet implemented.** No code exists in this directory.
 
-## Purpose
+This directory is reserved for the Solana Agent Kit integration plugin
+(Phase 6 of the roadmap).
 
-Provides agent with capabilities to:
-- Connect to Solana wallets (Phantom, Magic Eden, etc.)
-- Create and sign transactions
-- Execute trades on Jupiter, Raydium, Orca
-- Monitor account balances and positions
-- Interact with token programs and custom smart contracts
-- Manage program-derived addresses (PDAs)
+## Planned capabilities
 
-## Key Functions
+Once implemented, this plugin will provide the agent with:
 
-- Wallet management and key handling
-- Transaction construction and broadcasting
-- DEX routing and swap execution
-- Real-time transaction monitoring
-- Error handling and retry logic
+- Keypair loading from environment variables (never hard-coded)
+- Solana RPC connection pool
+- Jupiter swap instruction builder (devnet first, mainnet after validation)
+- Pre-trade simulation via `simulateTransaction` before signing
+- Transaction broadcasting and confirmation monitoring
+
+## Prerequisites before implementing
+
+The following must be complete first:
+
+1. Paper trading running stably for ≥30 days (done)
+2. API layer exposing signals (Phase 2 — in progress)
+3. Circuit breaker and risk checks in `services/execution/risk/` (Phase 6)
+4. Devnet end-to-end test passing without real funds
+
+## Do not implement yet
+
+Real wallet key handling and mainnet transaction signing must not be built
+until the devnet simulation path is stable and the risk checks are in place.

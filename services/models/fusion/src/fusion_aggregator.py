@@ -4,6 +4,10 @@ Merges signals from TEN (spoofing), XGBoost (classification), FinBERT (sentiment
 and GNN (graph) into unified fused decisions.
 """
 
+import importlib.util
+import sys
+from pathlib import Path
+
 import pandas as pd
 import numpy as np
 from datetime import datetime
@@ -17,6 +21,26 @@ from fusion_contracts import (
     FusedDecision,
     normalize_fused_decision_frame,
 )
+
+# Load fusion/config.py by absolute path so it never collides with any other
+# module named 'config' that may already be on sys.path (e.g. classification/config.py).
+_FUSION_CONFIG_PATH = Path(__file__).resolve().parents[1] / "config.py"
+_spec = importlib.util.spec_from_file_location("fusion.config", _FUSION_CONFIG_PATH)
+_fusion_cfg = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_fusion_cfg)
+
+WEIGHT_CLASSIFICATION   = _fusion_cfg.WEIGHT_CLASSIFICATION
+WEIGHT_SENTIMENT        = _fusion_cfg.WEIGHT_SENTIMENT
+WEIGHT_SPOOFING         = _fusion_cfg.WEIGHT_SPOOFING
+WEIGHT_GNN              = _fusion_cfg.WEIGHT_GNN
+BUY_THRESHOLD           = _fusion_cfg.BUY_THRESHOLD
+SELL_THRESHOLD          = _fusion_cfg.SELL_THRESHOLD
+SPOOFING_HOLD_THRESHOLD = _fusion_cfg.SPOOFING_HOLD_THRESHOLD
+RISK_HIGH_THRESHOLD     = _fusion_cfg.RISK_HIGH_THRESHOLD
+RISK_MEDIUM_THRESHOLD   = _fusion_cfg.RISK_MEDIUM_THRESHOLD
+ALIGNMENT_STRONG_AGREE     = _fusion_cfg.ALIGNMENT_STRONG_AGREE
+ALIGNMENT_STRONG_DISAGREE  = _fusion_cfg.ALIGNMENT_STRONG_DISAGREE
+ALIGNMENT_NEUTRAL          = _fusion_cfg.ALIGNMENT_NEUTRAL
 
 
 class FusionAggregator:
@@ -38,10 +62,10 @@ class FusionAggregator:
     
     def __init__(
         self,
-        weight_classification: float = 0.50,
-        weight_sentiment: float = 0.25,
-        weight_spoofing: float = 0.20,
-        weight_gnn: float = 0.05,
+        weight_classification: float = WEIGHT_CLASSIFICATION,
+        weight_sentiment: float = WEIGHT_SENTIMENT,
+        weight_spoofing: float = WEIGHT_SPOOFING,
+        weight_gnn: float = WEIGHT_GNN,
     ):
         """Initialize fusion aggregator with signal weights."""
         total = weight_classification + weight_sentiment + weight_spoofing + weight_gnn
@@ -319,43 +343,36 @@ class FusionAggregator:
     
     def _score_to_action(self, fused_score: float, spoofing_conf: float) -> str:
         """Convert fused score to BUY/SELL/HOLD action."""
-        # High spoofing confidence → HOLD regardless
-        if spoofing_conf > 0.7:
+        if spoofing_conf > SPOOFING_HOLD_THRESHOLD:
             return "HOLD"
-        
-        if fused_score > 0.3:
+        if fused_score > BUY_THRESHOLD:
             return "BUY"
-        elif fused_score < -0.3:
+        elif fused_score < -SELL_THRESHOLD:
             return "SELL"
         else:
             return "HOLD"
-    
+
     def _compute_risk_level(
         self, spoofing_conf: float, gnn_conf: float, sentiment_rel: float
     ) -> str:
         """Compute risk level from combined risk factors."""
         risk_score = (spoofing_conf * 0.4) + (gnn_conf * 0.3) + ((1 - sentiment_rel) * 0.3)
-        
-        if risk_score > 0.65:
+        if risk_score > RISK_HIGH_THRESHOLD:
             return "HIGH"
-        elif risk_score > 0.35:
+        elif risk_score > RISK_MEDIUM_THRESHOLD:
             return "MEDIUM"
         else:
             return "LOW"
-    
+
     def _compute_alignment(
         self, classification: float, sentiment: float, spoofing: float, gnn: float
     ) -> float:
         """Compute signal alignment score [0, 1]."""
-        # How well do non-risk-based signals agree?
-        # Spoofing and GNN are risk indicators, not directional
         classification_sign = 1 if classification > 0.1 else (-1 if classification < -0.1 else 0)
         sentiment_sign = 1 if sentiment > 0.1 else (-1 if sentiment < -0.1 else 0)
-        
         if classification_sign == 0 or sentiment_sign == 0:
-            return 0.5
-        
+            return ALIGNMENT_NEUTRAL
         if classification_sign == sentiment_sign:
-            return 0.9  # strong alignment
+            return ALIGNMENT_STRONG_AGREE
         else:
-            return 0.2  # strong disagreement
+            return ALIGNMENT_STRONG_DISAGREE

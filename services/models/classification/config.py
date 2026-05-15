@@ -21,9 +21,13 @@ REPORTS_DIR    = CLASSIFICATION_DIR / "reports"
 # ── Data collection ───────────────────────────────────────────────────────────
 EXCHANGE            = "binance"
 SYMBOL              = "SOL/USDT"
+BTC_SYMBOL          = "BTC/USDT"
 TIMEFRAME           = "15m"
 CANDLE_LIMIT_HISTORY  = 500   # max bars per Binance API call (historical download)
 CANDLE_LIMIT_REALTIME = 200   # bars fetched in realtime (enough for all indicators)
+
+# ── Raw data filenames (inside data/raw/) ────────────────────────────────────
+BTC_RAW_CSV = "btc_usdt_15m_raw.csv"
 
 # ── Intermediate CSV filenames (inside PROCESSED_DIR) ────────────────────────
 TECH_FEATURES_CSV  = "sol_usdt_15m_features_h4.csv"
@@ -49,10 +53,23 @@ ACTIVE_HORIZON = 4            # horizon used in realtime inference
 # These are absolute price levels; they contain regime information and will
 # hurt generalisation across market cycles.
 NON_STATIONARY_COLUMNS: set[str] = {
+    # Raw OHLCV — absolute price/volume levels
     "open", "high", "low", "close", "volume",
+    # Absolute moving averages
     "sma_10", "sma_20", "sma_50",
     "ema_10", "ema_20", "ema_50",
-    "bb_mid", "bb_upper", "bb_lower",   # Bollinger absolute levels
+    # Bollinger absolute levels (stationary versions: bb_width, close_vs_bb_mid)
+    "bb_mid", "bb_upper", "bb_lower",
+    # Absolute momentum — dollar diffs (stationary versions: return_3/6/12)
+    "momentum_3", "momentum_6", "momentum_12",
+    # Absolute candle geometry (stationary versions: body_to_range, *_pct)
+    "candle_body", "upper_shadow", "lower_shadow",
+    # Absolute ATR (stationary version: atr_pct_14)
+    "atr_14",
+    # Absolute volume average (stationary version: volume_vs_sma20)
+    "volume_sma_20",
+    # Absolute MACD (stationary versions: macd_*_pct)
+    "macd_line", "macd_signal", "macd_hist",
 }
 
 # Substrings that mark future-information (leakage) columns
@@ -84,6 +101,13 @@ ORDERBOOK_FEATURES: list[str] = [
     "pressure_indicator",
 ]
 
+# ── Hawkes intensity feature names (added by 03_hawkes_intensity.py) ─────────
+HAWKES_KEYWORDS: list[str] = ["hawkes"]
+HAWKES_FEATURES: list[str] = [
+    "hawkes_mu",
+    "hawkes_branching_ratio",
+]
+
 # ── XGBoost hyperparameters ───────────────────────────────────────────────────
 XGB_N_ESTIMATORS         = 200
 XGB_MAX_DEPTH            = 5
@@ -97,4 +121,10 @@ XGB_SEED                 = 42
 # P(up) >= CONFIDENCE_THRESHOLD          → UP   signal
 # P(up) <= 1 − CONFIDENCE_THRESHOLD      → DOWN signal
 # otherwise                              → NEUTRAL (no trade)
-CONFIDENCE_THRESHOLD = 0.60
+CONFIDENCE_THRESHOLD = 0.69
+
+# ── Paper-trader risk management ──────────────────────────────────────────────
+# Position size scales linearly from MIN_POSITION_SIZE (at the gate boundary)
+# to 1.0 (at maximum confidence).  This mirrors fractional Kelly sizing without
+# requiring a full Kelly calculation.
+MIN_POSITION_SIZE = 0.25   # minimum fraction of equity deployed per trade

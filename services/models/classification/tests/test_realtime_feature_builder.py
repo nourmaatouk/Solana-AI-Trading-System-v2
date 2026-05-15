@@ -14,13 +14,15 @@ class TestRealtimeFeatureBuilder(unittest.TestCase):
         # Create a mock OHLCV dataset
         np.random.seed(42)
         n_rows = 100
+        dates = pd.date_range("2024-01-01", periods=n_rows, freq="15min", tz="UTC")
         self.mock_data = pd.DataFrame({
-            'timestamp': range(n_rows),
-            'open': np.random.uniform(100, 110, n_rows),
-            'high': np.random.uniform(110, 120, n_rows),
-            'low': np.random.uniform(90, 100, n_rows),
-            'close': np.random.uniform(100, 110, n_rows),
-            'volume': np.random.uniform(1000, 5000, n_rows)
+            'timestamp': (dates.astype('int64') // 10**6).tolist(),
+            'datetime':  dates.strftime("%Y-%m-%d %H:%M:%S+00:00").tolist(),
+            'open':   np.random.uniform(100, 110, n_rows),
+            'high':   np.random.uniform(110, 120, n_rows),
+            'low':    np.random.uniform(90,  100, n_rows),
+            'close':  np.random.uniform(100, 110, n_rows),
+            'volume': np.random.uniform(1000, 5000, n_rows),
         })
 
     def test_indicators_exist(self):

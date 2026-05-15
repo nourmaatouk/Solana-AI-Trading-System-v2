@@ -17,36 +17,11 @@ from pathlib import Path
 
 import pandas as pd
 
-# Paths relative to this script
-SCRIPT_DIR = Path(__file__).resolve().parent
-MODELS_DIR = SCRIPT_DIR.parent
-CLASSIFICATION_DIR = SCRIPT_DIR
+from config import LEAKAGE_SUBSTRINGS, PROCESSED_DIR, TECH_FEATURES_CSV, SENTIMENT_CSV
+from pipeline_utils import find_ts_col
 
-TECH_CSV_PATH = CLASSIFICATION_DIR / "data" / "processed" / "sol_usdt_15m_features_h4.csv"
-OUTPUT_CSV_PATH = CLASSIFICATION_DIR / "data" / "processed" / "sol_usdt_15m_features_h4_with_sentiment.csv"
-
-LEAKAGE_SUBSTRINGS = [
-    "future",
-    "lead",
-    "t+1",
-]
-
-EXACT_LEAKAGE = [
-    "target",
-    "target_up",
-]
-
-
-def find_ts_col(df: pd.DataFrame) -> str:
-    """Find the timestamp column."""
-    candidates = ["timestamp", "datetime", "date", "time", "ts"]
-    for c in candidates:
-        if c in df.columns:
-            return c
-    for c in df.columns:
-        if c.lower().endswith(("_time", "_timestamp", "_date", "_ts")):
-            return c
-    raise ValueError(f"No timestamp column found in columns: {df.columns.tolist()}")
+TECH_CSV_PATH   = PROCESSED_DIR / TECH_FEATURES_CSV
+OUTPUT_CSV_PATH = PROCESSED_DIR / SENTIMENT_CSV
 
 
 def process_features(tech_path: Path, output_path: Path) -> pd.DataFrame:
@@ -72,8 +47,6 @@ def process_features(tech_path: Path, output_path: Path) -> pd.DataFrame:
         if c_lower == "target_direction":
             continue
         if any(sub in c_lower for sub in LEAKAGE_SUBSTRINGS):
-            cols_to_drop.append(c)
-        elif c_lower in EXACT_LEAKAGE:
             cols_to_drop.append(c)
 
     if cols_to_drop:
@@ -118,7 +91,7 @@ def merge_features(tech_path: Path, sent_path: Path, output_path: Path) -> pd.Da
             col_lower = str(col).lower()
             if col_lower == "target_direction":
                 continue
-            if any(sub in col_lower for sub in LEAKAGE_SUBSTRINGS) or col_lower in EXACT_LEAKAGE:
+            if any(sub in col_lower for sub in LEAKAGE_SUBSTRINGS):
                 drop_cols.append(col)
         if drop_cols:
             df = df.drop(columns=drop_cols)

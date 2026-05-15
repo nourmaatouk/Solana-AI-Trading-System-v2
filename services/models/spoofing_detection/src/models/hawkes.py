@@ -42,90 +42,167 @@ class HawkesEstimator:
         self._lock = threading.Lock()
         self._adjacency = np.eye(n_assets, dtype=np.float32)
 
-    def _neg_log_likelihood(self, theta: np.ndarray, events: List[np.ndarray], N: int) -> float:
-        """Computes NLL for sum of 2 exponentials."""
-        mu = np.clip(theta[:N], 1e-5, None)
-        alpha1 = np.clip(theta[N : N + N*N], 0.0, None).reshape((N, N))
-        alpha2 = np.clip(theta[N + N*N : N + 2*N*N], 0.0, None).reshape((N, N))
+    # ── Vectorised helpers ────────────────────────────────────────────────────
 
-        # Focus strictly on cross-asset causality
+    @staticmethod
+    def _precompute_S(tj: np.ndarray, beta: float) -> np.ndarray:
+        """Precompute S[k] = Σ_{l≤k} exp(-β·(tj[k]-tj[l])) via the recurrence
+        S[k] = exp(-β·dt_k)·S[k-1] + 1.
+
+        Computed once per (asset, kernel) pair before optimisation starts, so the
+        O(T) sequential loop runs only twice per asset (not once per gradient call).
+        Numerically stable: dt_k ≥ 0 so exp terms decay, S stays bounded.
+        """
+        if len(tj) == 0:
+            return np.empty(0)
+        S = np.ones(len(tj))
+        for k in range(1, len(tj)):
+            S[k] = np.exp(-beta * (tj[k] - tj[k - 1])) * S[k - 1] + 1.0
+        return S
+
+    @staticmethod
+    def _R_at_ti(ti: np.ndarray, tj: np.ndarray, S_j: np.ndarray, beta: float) -> np.ndarray:
+        """Vectorised cross-asset excitation R_ij at each event time in ti.
+
+        R_ij(t_i^n) = Σ_{t_j^k < t_i^n} exp(-β·(t_i^n - t_j^k))
+                    = exp(-β·(t_i^n - tj[last])) · S_j[last]
+        where 'last' is the index of the most recent j-event before t_i^n.
+        """
+        if len(tj) == 0 or len(ti) == 0:
+            return np.zeros(len(ti))
+        idx = np.searchsorted(tj, ti, side="left") - 1   # last t_j^k < t_i^n
+        result = np.zeros(len(ti))
+        mask = idx >= 0
+        if mask.any():
+            k = idx[mask]
+            result[mask] = np.exp(-beta * (ti[mask] - tj[k])) * S_j[k]
+        return result
+
+    # ── NLL + analytical gradient (vectorised, one pass per optimizer step) ──
+
+    def _nll_and_grad(
+        self,
+        theta: np.ndarray,
+        events: List[np.ndarray],
+        N: int,
+        S1: List[np.ndarray],
+        S2: List[np.ndarray],
+    ) -> Tuple[float, np.ndarray]:
+        """Returns (NLL, gradient) using vectorised cross-asset excitation.
+
+        Key speedup: S1[j] / S2[j] are precomputed once before optimisation (they
+        don't depend on parameters).  Each gradient call then replaces the O(T)
+        Python event-loop with N² vectorised np.searchsorted + array-multiply
+        calls, cutting per-call cost from O(T·Python-overhead) to O(N²·numpy).
+
+        Gradient:
+          ∂NLL/∂μ_i       = T - Σ_{t_i^n} 1/λ_i(t_i^n)
+          ∂NLL/∂α1_{ij}   = (1/β1)·Σ_{t_j}(1-exp(-β1(T-t_j))) - Σ_{t_i^n} R1_ij(t_i^n)/λ_i
+          (analogously for α2, β2)
+        """
+        mu    = np.clip(theta[:N], 1e-5, None)
+        alpha1 = np.clip(theta[N     : N + N*N],    0.0, None).reshape((N, N))
+        alpha2 = np.clip(theta[N+N*N : N + 2*N*N],  0.0, None).reshape((N, N))
         np.fill_diagonal(alpha1, 0.0)
         np.fill_diagonal(alpha2, 0.0)
 
-        nll = 0.0
-        
-        # 1. Integral compensator part
-        T_max = 0.0
-        for i in range(N):
-            if len(events[i]) > 0:
-                T_max = max(T_max, events[i][-1])
-        
-        for i in range(N):
-            # mu_i * T
-            nll += mu[i] * T_max
-            
-            # sum_j (alpha1_ij/beta1 + alpha2_ij/beta2) * sum_k (1 - exp(-beta*(T-tk)))
-            for j in range(N):
-                if i != j and len(events[j]) > 0:
-                    tj = events[j]
-                    term1 = np.sum(1.0 - np.exp(-self.beta1 * (T_max - tj)))
-                    term2 = np.sum(1.0 - np.exp(-self.beta2 * (T_max - tj)))
-                    nll += (alpha1[i, j] / self.beta1) * term1
-                    nll += (alpha2[i, j] / self.beta2) * term2
-                        
-        # 2. Log intensities at event times
+        non_empty = [ev for ev in events if len(ev) > 0]
+        if not non_empty:
+            return 0.0, np.zeros_like(theta)
+
+        T_max = max(ev[-1] for ev in non_empty)
+
+        nll  = float(np.sum(mu) * T_max)
+        g_mu = np.full(N, T_max, dtype=np.float64)
+        g_a1 = np.zeros((N, N), dtype=np.float64)
+        g_a2 = np.zeros((N, N), dtype=np.float64)
+
         for i in range(N):
             ti = events[i]
-            for t in ti:
-                lam = mu[i]
-                for j in range(N):
-                    if i != j:
-                        tj = events[j]
-                        tj_past = tj[tj < t]
-                        if len(tj_past) > 0:
-                            # Sum over past events for both kernels
-                            dt = t - tj_past
-                            lam += alpha1[i, j] * np.sum(np.exp(-self.beta1 * dt))
-                            lam += alpha2[i, j] * np.sum(np.exp(-self.beta2 * dt))
-                
-                nll -= np.log(max(lam, 1e-10))
-                
-        return nll
+            if len(ti) == 0:
+                continue
+
+            # Accumulate λ_i at each t_i^n and the per-pair R matrices
+            lam_i  = np.full(len(ti), mu[i], dtype=np.float64)
+            R1_store: List[np.ndarray] = [np.empty(0)] * N
+            R2_store: List[np.ndarray] = [np.empty(0)] * N
+
+            for j in range(N):
+                if i == j or len(events[j]) == 0:
+                    continue
+                tj = events[j]
+
+                # Integral compensator
+                dt_j = T_max - tj
+                c1 = float(np.sum(1.0 - np.exp(-self.beta1 * dt_j)))
+                c2 = float(np.sum(1.0 - np.exp(-self.beta2 * dt_j)))
+                nll       += (alpha1[i, j] / self.beta1) * c1
+                nll       += (alpha2[i, j] / self.beta2) * c2
+                g_a1[i, j] += c1 / self.beta1
+                g_a2[i, j] += c2 / self.beta2
+
+                # Vectorised cross-excitation
+                r1 = self._R_at_ti(ti, tj, S1[j], self.beta1)
+                r2 = self._R_at_ti(ti, tj, S2[j], self.beta2)
+                R1_store[j] = r1
+                R2_store[j] = r2
+                lam_i += alpha1[i, j] * r1 + alpha2[i, j] * r2
+
+            inv_lam = 1.0 / np.maximum(lam_i, 1e-10)
+            nll    -= float(np.sum(np.log(np.maximum(lam_i, 1e-10))))
+            g_mu[i] -= float(np.sum(inv_lam))
+
+            for j in range(N):
+                if i != j and len(R1_store[j]) > 0:
+                    g_a1[i, j] -= float(np.sum(R1_store[j] * inv_lam))
+                    g_a2[i, j] -= float(np.sum(R2_store[j] * inv_lam))
+
+        grad = np.concatenate([g_mu, g_a1.ravel(), g_a2.ravel()])
+        return nll, grad
 
     def fit(self, event_times_dict: Dict[int, List[float]]) -> None:
-        """Estimate parameters via MLE."""
+        """Estimate parameters via MLE using vectorised NLL + analytical gradient.
+
+        S1[j] / S2[j] are precomputed once (they don't depend on parameters) so
+        the optimiser only pays the O(T) Python precompute cost once, not once per
+        gradient call.  Each gradient call is then dominated by N² vectorised numpy
+        operations on arrays of length T_i, not by T Python iterations.
+        """
         N = self.n_assets
         events = [np.sort(np.array(event_times_dict.get(i, []), dtype=np.float64)) for i in range(N)]
 
-        # theta = [mu (N), alpha1 (N*N), alpha2 (N*N)]
+        # Precompute recursive sums — O(T) Python loop, run once
+        S1 = [self._precompute_S(ev, self.beta1) for ev in events]
+        S2 = [self._precompute_S(ev, self.beta2) for ev in events]
+
         theta0 = np.concatenate([
             np.ones(N),          # mu
             np.full(N*N, 0.05),  # alpha1
-            np.full(N*N, 0.05)   # alpha2
+            np.full(N*N, 0.05),  # alpha2
         ])
-        
         bounds = [(1e-4, None)] * N + [(0.0, None)] * (2 * N * N)
 
         try:
             res = minimize(
-                self._neg_log_likelihood, 
-                theta0, 
-                args=(events, N),
-                method='L-BFGS-B', 
+                self._nll_and_grad,
+                theta0,
+                args=(events, N, S1, S2),
+                method="L-BFGS-B",
+                jac=True,
                 bounds=bounds,
-                options={'maxiter': 50, 'ftol': 1e-3}
+                options={"maxiter": 100, "ftol": 1e-4},
             )
             
             alpha1_opt = res.x[N : N + N*N].reshape((N, N))
             alpha2_opt = res.x[N + N*N : N + 2*N*N].reshape((N, N))
-            
-            # Combined Branching Ratio
-            A = (alpha1_opt / self.beta1) + (alpha2_opt / self.beta2)
 
-            # Row-max normalization (A / row_max) guarantees at least one 1.0 per row,
-            # which saturates the GNN attention for every asset regardless of true coupling
-            # strength.  Clip to [0, 1] instead — preserves relative magnitudes and
-            # keeps super-critical rows (branching ratio > 1) at the ceiling.
+            # Zero diagonal: optimizer may have non-zero values for diagonal
+            # parameters even though they carry no gradient (zeroed inside NLL).
+            np.fill_diagonal(alpha1_opt, 0.0)
+            np.fill_diagonal(alpha2_opt, 0.0)
+
+            # Combined Branching Ratio — clipped to [0, 0.9] (sub-critical)
+            A = (alpha1_opt / self.beta1) + (alpha2_opt / self.beta2)
             A = np.clip(A, 0.0, 0.9)
 
             with self._lock:

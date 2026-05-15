@@ -20,34 +20,15 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from config import LEAKAGE_SUBSTRINGS, ORDERBOOK_CSV, PROCESSED_DIR, REALTIME_DIR, SENTIMENT_CSV
+from pipeline_utils import find_ts_col
 
 # =========================================================
 # PATHS
 # =========================================================
-SCRIPT_DIR = Path(__file__).resolve().parent
-DATA_DIR = SCRIPT_DIR / "data"
-
-MARKET_SENT_PATH = DATA_DIR / "processed" / "sol_usdt_15m_features_h4_with_sentiment.csv"
-ORDERBOOK_PATH = DATA_DIR / "realtime" / "orderbook_features.csv"
-OUTPUT_PATH = DATA_DIR / "processed" / "sol_usdt_15m_features_h4_with_sentiment_orderbook.csv"
-
-LEAKAGE_SUBSTRINGS = ["future", "lead", "t+1"]
-EXACT_LEAKAGE = ["target", "target_up"]
-
-
-# =========================================================
-# HELPERS
-# =========================================================
-def find_ts_col(df: pd.DataFrame) -> str:
-    """Find the timestamp column."""
-    candidates = ["timestamp", "datetime", "date", "time", "ts"]
-    for c in candidates:
-        if c in df.columns:
-            return c
-    for c in df.columns:
-        if c.lower().endswith(("_time", "_timestamp", "_date", "_ts")):
-            return c
-    raise ValueError(f"No timestamp column found in columns: {df.columns.tolist()}")
+MARKET_SENT_PATH = PROCESSED_DIR / SENTIMENT_CSV
+ORDERBOOK_PATH   = REALTIME_DIR / "orderbook_features.csv"
+OUTPUT_PATH      = PROCESSED_DIR / ORDERBOOK_CSV
 
 
 def resample_orderbook_15m(df_ob: pd.DataFrame) -> pd.DataFrame:
@@ -125,8 +106,6 @@ def merge_orderbook(
         if c_lower == "target_direction":
             continue
         if any(sub in c_lower for sub in LEAKAGE_SUBSTRINGS):
-            cols_to_drop.append(c)
-        elif c_lower in EXACT_LEAKAGE:
             cols_to_drop.append(c)
 
     if cols_to_drop:

@@ -6,64 +6,44 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from indicators import compute_atr, compute_macd, compute_rsi
+
 
 # =========================================================
 # CONFIG
 # =========================================================
-# Using Path(__file__).resolve().parent as base for this script
-BASE_DIR = Path(__file__).resolve().parent
-INPUT_PATH = BASE_DIR / "data" / "realtime" / "latest_sol_15m.csv"
+BASE_DIR    = Path(__file__).resolve().parent
+INPUT_PATH  = BASE_DIR / "data" / "realtime" / "latest_sol_15m.csv"
+BTC_PATH    = BASE_DIR / "data" / "realtime" / "latest_btc_15m.csv"
 OUTPUT_PATH = BASE_DIR / "data" / "realtime" / "latest_sol_15m_features.csv"
-
-
-# =========================================================
-# INDICATOR FUNCTIONS (Copied from training pipeline)
-# =========================================================
-def compute_rsi(series: pd.Series, period: int = 14) -> pd.Series:
-    delta = series.diff()
-    gain = delta.clip(lower=0)
-    loss = -delta.clip(upper=0)
-    avg_gain = gain.rolling(period).mean()
-    avg_loss = loss.rolling(period).mean()
-    rs = avg_gain / (avg_loss + 1e-12)
-    rsi = 100 - (100 / (1 + rs))
-    return rsi
-
-
-def compute_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
-    high = df["high"]
-    low = df["low"]
-    close = df["close"]
-    prev_close = close.shift(1)
-    tr1 = high - low
-    tr2 = (high - prev_close).abs()
-    tr3 = (low - prev_close).abs()
-    true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-    atr = true_range.rolling(period).mean()
-    return atr
-
-
-def compute_macd(series: pd.Series,
-                 fast: int = 12,
-                 slow: int = 26,
-                 signal: int = 9) -> tuple[pd.Series, pd.Series, pd.Series]:
-    ema_fast = series.ewm(span=fast, adjust=False).mean()
-    ema_slow = series.ewm(span=slow, adjust=False).mean()
-    macd_line = ema_fast - ema_slow
-    signal_line = macd_line.ewm(span=signal, adjust=False).mean()
-    macd_hist = macd_line - signal_line
-    return macd_line, signal_line, macd_hist
 
 
 # =========================================================
 # FEATURE BUILDING
 # =========================================================
+def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
+    dt = pd.to_datetime(df["datetime"], utc=True)
+    hour = dt.dt.hour
+    dow  = dt.dt.dayofweek
+    df["hour_sin"]   = np.sin(2 * np.pi * hour / 24)
+    df["hour_cos"]   = np.cos(2 * np.pi * hour / 24)
+    df["dow_sin"]    = np.sin(2 * np.pi * dow / 7)
+    df["dow_cos"]    = np.cos(2 * np.pi * dow / 7)
+    df["is_weekend"] = (dow >= 5).astype(np.int8)
+    return df
+
+
 def add_realtime_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     Builds technical features for real-time prediction.
     Must match the feature engineering used in 01_collect and 02_build_features.
     """
     out = df.copy()
+
+    # -----------------------------------------------------
+    # Time-of-day / day-of-week (cyclical encoding)
+    # -----------------------------------------------------
+    out = add_time_features(out)
 
     # -----------------------------------------------------
     # Basic features (from 01_collect_sol_data_15m.py)
@@ -105,6 +85,9 @@ def add_realtime_features(df: pd.DataFrame) -> pd.DataFrame:
     out["macd_line"] = macd_line
     out["macd_signal"] = signal_line
     out["macd_hist"] = macd_hist
+    out["macd_line_pct"]   = macd_line   / (out["close"] + 1e-12)
+    out["macd_signal_pct"] = signal_line / (out["close"] + 1e-12)
+    out["macd_hist_pct"]   = macd_hist   / (out["close"] + 1e-12)
 
     # Bollinger Bands
     rolling_mean_20 = out["close"].rolling(20).mean()
@@ -154,9 +137,63 @@ def add_realtime_features(df: pd.DataFrame) -> pd.DataFrame:
     out["candle_body"] = (out["close"] - out["open"]).abs()
     out["upper_shadow"] = out["high"] - out[["open", "close"]].max(axis=1)
     out["lower_shadow"] = out[["open", "close"]].min(axis=1) - out["low"]
-    out["body_to_range"] = out["candle_body"] / ((out["high"] - out["low"]) + 1e-12)
+    out["body_to_range"]    = out["candle_body"]  / ((out["high"] - out["low"]) + 1e-12)
+    out["upper_shadow_pct"] = out["upper_shadow"] / (out["close"] + 1e-12)
+    out["lower_shadow_pct"] = out["lower_shadow"] / (out["close"] + 1e-12)
 
     return out
+
+
+# =========================================================
+# BTC CO-FEATURES
+# =========================================================
+def compute_btc_rsi(series: pd.Series, period: int = 14) -> pd.Series:
+    delta    = series.diff()
+    avg_gain = delta.clip(lower=0).rolling(period).mean()
+    avg_loss = (-delta.clip(upper=0)).rolling(period).mean()
+    rs       = avg_gain / (avg_loss + 1e-12)
+    return 100 - (100 / (1 + rs))
+
+
+def build_btc_features(btc: pd.DataFrame) -> pd.DataFrame:
+    ret1  = btc["close"].pct_change()
+    sma20 = btc["close"].rolling(20).mean()
+    feats = pd.DataFrame({
+        "timestamp":     btc["timestamp"],
+        "btc_return_4":  btc["close"].pct_change(4),
+        "btc_return_16": btc["close"].pct_change(16),
+        "btc_vol_12":    ret1.rolling(12).std(),
+        "btc_vs_sma20":  (btc["close"] / (sma20 + 1e-12)) - 1.0,
+        "btc_rsi_14":    compute_btc_rsi(btc["close"]),
+    })
+    return feats.dropna(subset=["btc_return_16", "btc_rsi_14"])
+
+
+def merge_btc_features(sol_df: pd.DataFrame) -> pd.DataFrame:
+    """Compute BTC co-features from latest_btc_15m.csv and left-merge onto sol_df."""
+    btc_cols = ["btc_return_4", "btc_return_16", "btc_vol_12", "btc_vs_sma20", "btc_rsi_14"]
+
+    if not BTC_PATH.exists():
+        print(f"  WARNING: BTC realtime file not found ({BTC_PATH}). "
+              "BTC features will be zero-filled. Run realtime_btc_fetcher.py first.")
+        for col in btc_cols:
+            sol_df[col] = 0.0
+        return sol_df
+
+    btc_raw  = pd.read_csv(BTC_PATH)
+    btc_feat = build_btc_features(btc_raw)
+
+    merged = sol_df.merge(btc_feat, on="timestamp", how="left")
+
+    n_missing = merged[btc_cols].isna().any(axis=1).sum()
+    if n_missing > 0:
+        merged[btc_cols] = merged[btc_cols].ffill().bfill()
+        still_missing = merged[btc_cols].isna().any(axis=1).sum()
+        if still_missing > 0:
+            print(f"  WARNING: {still_missing} rows have no BTC match even after fill — zero-filling.")
+            merged[btc_cols] = merged[btc_cols].fillna(0.0)
+
+    return merged
 
 
 def main():
@@ -171,8 +208,12 @@ def main():
     df = pd.read_csv(INPUT_PATH)
     print(f"Loaded {len(df)} rows from {INPUT_PATH}")
 
-    # Build features
+    # Build SOL technical features
     featured_df = add_realtime_features(df)
+
+    # Merge BTC co-features (btc_return_4, btc_return_16, btc_vol_12, btc_vs_sma20, btc_rsi_14)
+    print("Merging BTC co-features …")
+    featured_df = merge_btc_features(featured_df)
 
     # Cleaning: No NaN or inf allowed in final feature set
     featured_df.replace([np.inf, -np.inf], np.nan, inplace=True)

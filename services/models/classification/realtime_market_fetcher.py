@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import sys
 
-import ccxt
 import pandas as pd
 
 from config import (
@@ -12,28 +11,18 @@ from config import (
     SYMBOL,
     TIMEFRAME,
 )
+from exchange_utils import fetch_ohlcv_with_retries, get_exchange
 
 OUTPUT_PATH = REALTIME_DIR / "latest_sol_15m.csv"
 
 
-def get_exchange(exchange_name: str):
-    exchange_class = getattr(ccxt, exchange_name)
-    return exchange_class({
-        "enableRateLimit": True,
-        "timeout": 30000,
-    })
-
-
 def fetch_latest_candles(exchange, symbol: str, timeframe: str, limit: int) -> pd.DataFrame:
-    """
-    Fetch the most recent candles for a given symbol and timeframe.
-    """
     print(f"Fetching latest {limit} candles for {symbol} on {timeframe}...")
     
     try:
-        ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+        ohlcv = fetch_ohlcv_with_retries(exchange, symbol, timeframe, since=None, limit=limit)
     except Exception as e:
-        print(f"Error fetching data from exchange: {e}")
+        print(f"Error fetching data from exchange after retries: {type(e).__name__}: {e}")
         sys.exit(1)
         
     if not ohlcv:
@@ -76,14 +65,7 @@ def main():
     else:
         print(f"Success: Fetched {count} candles.")
 
-    # Save to CSV
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    
-    # Keep columns per task: timestamp, open, high, low, close, volume (and datetime as requested for UTC)
-    # The user said "Keep columns: timestamp, open, high, low, close, volume"
-    # But also "Ensure timestamps are UTC datetime"
-    # I'll include 'datetime' as the UTC representation.
-    
     df.to_csv(OUTPUT_PATH, index=False)
     
     print(f"Latest market data saved to: {OUTPUT_PATH}")
