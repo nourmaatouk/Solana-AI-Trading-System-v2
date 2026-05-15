@@ -16,6 +16,9 @@ venv/
 env/
 ENV/
 
+# Node dependencies
+node_modules/
+
 # Environment files — keep .env.example, never commit real secrets
 .env
 .env.local
