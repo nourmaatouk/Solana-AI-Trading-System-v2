@@ -16,16 +16,25 @@ NLP_DIR = PROJECT_ROOT / "nlp"
 sys.path.append(str(NLP_DIR))
 
 try:
+    from src.contracts.layer2_contract import normalize_layer2_bucket_frame
+except ImportError as e:
+    raise ImportError(
+        "Could not import NLP layer-2 contracts. Ensure services/models/nlp is "
+        "available on PYTHONPATH."
+    ) from e
+
+_NLP_IMPORT_ERROR: ImportError | None = None
+try:
     from src.fetchers.gdelt_fetcher import GdeltFetcher
     from src.fetchers.rss_fetcher import RssFetcher
     from src.processing.sentiment_pipeline import process_articles
     from src.models.finbert_wrapper import FinBertSentimentAnalyzer
     from src.aggregation.feature_aggregator import aggregate_sentiment_15m
-    from src.contracts.layer2_contract import normalize_layer2_bucket_frame, BUCKET_DEFAULTS
-except ImportError:
-    # If standard imports fail due to path structure, try relative to models
-    sys.path.append(str(PROJECT_ROOT / "nlp"))
-    # (re-imports would happen here if needed, but the first one usually works if path is right)
+except ImportError as e:
+    # The fallback/decay helpers only need the contract normalizer above. Keep
+    # them importable in lightweight CI environments that do not install the
+    # full FinBERT/transformers stack; main() fails clearly if called.
+    _NLP_IMPORT_ERROR = e
 
 # =========================================================
 # CONFIG
@@ -108,6 +117,12 @@ def main():
     print("=" * 60)
     print("Real-time Sentiment Fetcher Starting")
     print("=" * 60)
+
+    if _NLP_IMPORT_ERROR is not None:
+        raise SystemExit(
+            "Missing optional NLP runtime dependency/module required for live "
+            f"sentiment fetching: {_NLP_IMPORT_ERROR}"
+        )
 
     try:
         # Load cache

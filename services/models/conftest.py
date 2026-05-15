@@ -21,6 +21,13 @@ from pathlib import Path
 import pytest
 
 _MODELS_ROOT = Path(__file__).resolve().parent
+_REPO_ROOT = _MODELS_ROOT.parents[1]
+
+# The classification orderbook tests import `services.ingest...`, which only
+# resolves in a clean CI checkout when the repository root is importable.
+_repo_root = str(_REPO_ROOT)
+if _repo_root not in sys.path:
+    sys.path.insert(0, _repo_root)
 
 # fusion/src is added so that `from fusion_aggregator import ...` works
 # without a `from src.xxx` style (the fusion package uses flat imports).
