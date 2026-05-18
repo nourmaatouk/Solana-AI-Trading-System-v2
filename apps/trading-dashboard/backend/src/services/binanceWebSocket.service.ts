@@ -1,4 +1,9 @@
 import WebSocket, { WebSocketServer } from 'ws';
+import {
+  ACTIVE_SYMBOL, ACTIVE_TIMEFRAME, KLINES_LIMIT, TIMEOUT_KLINES_MS,
+  MAX_TRADES, MAX_BINANCE_RETRIES, WS_RECONNECT_BASE_MS, WS_RECONNECT_MAX_MS,
+  WS_KLINE_RETRY_BASE_MS,
+} from '../config';
 
 // ── Interfaces ────────────────────────────────────────────────────────────────
 
@@ -92,27 +97,30 @@ interface BinanceDepthMsg {
 
 // ── Service ───────────────────────────────────────────────────────────────────
 
+const BINANCE_WS_HOST   = process.env.BINANCE_WS_HOST   ?? 'wss://stream.binance.com:9443';
+const BINANCE_REST_HOST = process.env.BINANCE_REST_HOST ?? 'https://api.binance.com';
+const OKX_WS_URL        = process.env.OKX_WS_URL        ?? 'wss://ws.okx.com:8443/ws/v5/public';
+
+// Active trading symbol (no slash, lowercase) — e.g. "solusdt"
+const ACTIVE_STREAM_SYMBOL = (process.env.ACTIVE_SYMBOL ?? 'SOLUSDT').replace('/', '').toLowerCase();
+
+// Watchlist symbols that get a ticker stream (comma-separated, no slash, lowercase)
+const WATCHLIST_STREAM_SYMBOLS = (process.env.WATCHLIST_SYMBOLS ?? 'btcusdt,ethusdt,bnbusdt,adausdt,xrpusdt')
+  .split(',')
+  .map(s => s.trim().toLowerCase())
+  .filter(s => s && s !== ACTIVE_STREAM_SYMBOL);
+
 function buildBinanceUrl(klineInterval: string): string {
   const streams = [
-    'solusdt@ticker',
-    `solusdt@kline_${klineInterval}`,
-    'solusdt@trade',
-    'solusdt@depth20@100ms',
-    'btcusdt@ticker',
-    'ethusdt@ticker',
-    'bnbusdt@ticker',
-    'adausdt@ticker',
-    'xrpusdt@ticker',
+    `${ACTIVE_STREAM_SYMBOL}@ticker`,
+    `${ACTIVE_STREAM_SYMBOL}@kline_${klineInterval}`,
+    `${ACTIVE_STREAM_SYMBOL}@trade`,
+    `${ACTIVE_STREAM_SYMBOL}@depth20@100ms`,
+    ...WATCHLIST_STREAM_SYMBOLS.map(s => `${s}@ticker`),
   ].join('/');
-  return `wss://stream.binance.com:9443/stream?streams=${streams}`;
+  return `${BINANCE_WS_HOST}/stream?streams=${streams}`;
 }
-const OKX_URL = 'wss://ws.okx.com:8443/ws/v5/public';
 
-const MAX_KLINES = 500;
-const MAX_TRADES = 100;
-const MAX_RECONNECT_DELAY_MS = 30_000;
-const BASE_RECONNECT_DELAY_MS = 1_000;
-const MAX_BINANCE_RETRIES = 3;
 
 export class BinanceWebSocketService {
   private wss: WebSocketServer;
@@ -126,10 +134,10 @@ export class BinanceWebSocketService {
 
   private connectionStatus: 'connected' | 'reconnecting' | 'disconnected' = 'disconnected';
   private exchange = 'binance';
-  private reconnectDelay = BASE_RECONNECT_DELAY_MS;
+  private reconnectDelay = WS_RECONNECT_BASE_MS;
   private binanceFailCount = 0;
   private destroyed = false;
-  private selectedInterval = '15m';
+  private selectedInterval = ACTIVE_TIMEFRAME;
 
   constructor(wss: WebSocketServer) {
     this.wss = wss;
@@ -149,8 +157,8 @@ export class BinanceWebSocketService {
   async fetchHistoricalKlines(symbol: string, interval: string, limit = 500): Promise<boolean> {
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
-        const res = await fetch(url, { signal: AbortSignal.timeout(20000) });
+        const url = `${BINANCE_REST_HOST}/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
+        const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_KLINES_MS) });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const raw = await res.json() as [number, string, string, string, string, string, ...unknown[]][];
         this.klines = raw.map((k) => ({
@@ -166,7 +174,7 @@ export class BinanceWebSocketService {
         return true;
       } catch (err) {
         console.warn(`[binance] Kline fetch attempt ${attempt}/3 failed: ${(err as Error).message}`);
-        if (attempt < 3) await new Promise((r) => setTimeout(r, 2000 * attempt));
+        if (attempt < 3) await new Promise((r) => setTimeout(r, WS_KLINE_RETRY_BASE_MS * attempt));
       }
     }
     console.error('[binance] All kline fetch attempts failed');
@@ -186,24 +194,29 @@ export class BinanceWebSocketService {
     console.log(`[binance] Switching kline interval: ${this.selectedInterval} → ${interval}`);
     this.selectedInterval = interval;
     this.binanceFailCount = 0; // reset so reconnect goes to Binance, not OKX
-    this.reconnectDelay = BASE_RECONNECT_DELAY_MS;
+    this.reconnectDelay = WS_RECONNECT_BASE_MS;
     this.ws?.close();            // triggers scheduleReconnect → connectBinance with new interval
   }
 
   private connectOkx(): void {
     console.log('[okx] Falling back to OKX WebSocket...');
     this.exchange = 'okx';
-    this.ws = new WebSocket(OKX_URL);
+    this.ws = new WebSocket(OKX_WS_URL);
 
     this.ws.once('open', () => {
-      console.log('[okx] Connected — subscribing to SOL-USDT ticker');
+      const okxInstId = ACTIVE_STREAM_SYMBOL.toUpperCase().replace('USDT', '-USDT');
+      console.log(`[okx] Connected — subscribing to ${okxInstId} ticker`);
       this.ws?.send(JSON.stringify({
         op: 'subscribe',
-        args: [{ channel: 'tickers', instId: 'SOL-USDT' }],
+        args: [{ channel: 'tickers', instId: okxInstId }],
       }));
       this.connectionStatus = 'connected';
-      this.reconnectDelay = BASE_RECONNECT_DELAY_MS;
+      this.reconnectDelay = WS_RECONNECT_BASE_MS;
       this.broadcast({ type: 'connection', status: 'connected', exchange: 'okx' });
+      // OKX has no kline stream — preserve chart history from the last Binance fetch
+      if (this.klines.length > 0) {
+        this.broadcast({ type: 'klines_snapshot', symbol: ACTIVE_SYMBOL, data: this.klines });
+      }
     });
 
     this.ws.on('message', (raw) => {
@@ -215,7 +228,7 @@ export class BinanceWebSocketService {
           if (!d) return;
           const changePct = parseFloat(d.change24h ?? '0') * 100;
           const ticker: TickerData = {
-            symbol: 'SOLUSDT',
+            symbol: ACTIVE_SYMBOL,
             price: d.last,
             change: String((parseFloat(d.last) - parseFloat(d.open24h)).toFixed(4)),
             changePct: changePct.toFixed(2),
@@ -225,11 +238,11 @@ export class BinanceWebSocketService {
             quoteVolume: d.volCcy24h,
           };
           this.latestTicker = ticker;
-          this.broadcast({ type: 'ticker', symbol: 'SOLUSDT', data: ticker });
-          this.updateWatchlist('SOLUSDT', ticker);
+          this.broadcast({ type: 'ticker', symbol: ACTIVE_SYMBOL, data: ticker });
+          this.updateWatchlist(ACTIVE_SYMBOL, ticker);
           this.broadcastWatchlist();
         }
-      } catch { /* ignore parse errors */ }
+      } catch (err) { console.debug('[okx] message parse error:', err); }
     });
 
     this.ws.on('error', (err) => console.error('[okx] WS error:', err.message));
@@ -244,16 +257,20 @@ export class BinanceWebSocketService {
     this.ws.on('open', () => {
       console.log('[binance] Connected');
       this.connectionStatus = 'connected';
-      this.reconnectDelay = BASE_RECONNECT_DELAY_MS;
+      this.reconnectDelay = WS_RECONNECT_BASE_MS;
       this.broadcast({ type: 'connection', status: 'connected', exchange: 'binance' });
 
-      // If we have no kline history (startup fetch failed), backfill now
       if (this.klines.length === 0) {
-        this.fetchHistoricalKlines('SOLUSDT', this.selectedInterval, 500).then((ok) => {
+        // Startup REST pre-fetch failed — backfill now via the live connection
+        this.fetchHistoricalKlines(ACTIVE_SYMBOL, this.selectedInterval, KLINES_LIMIT).then((ok) => {
           if (ok) {
-            this.broadcast({ type: 'klines_snapshot', symbol: 'SOLUSDT', data: this.klines });
+            this.broadcast({ type: 'klines_snapshot', symbol: ACTIVE_SYMBOL, data: this.klines });
           }
         });
+      } else {
+        // Klines already loaded (pre-fetch succeeded or interval change).
+        // Broadcast to any client that connected before the WS handshake finished.
+        this.broadcast({ type: 'klines_snapshot', symbol: ACTIVE_SYMBOL, data: this.klines });
       }
     });
 
@@ -261,7 +278,7 @@ export class BinanceWebSocketService {
       try {
         const msg = JSON.parse(raw.toString()) as BinanceCombinedMsg;
         this.handleBinanceMessage(msg);
-      } catch { /* ignore */ }
+      } catch (err) { console.debug('[binance] message parse error:', err); }
     });
 
     this.ws.on('error', (err) => {
@@ -304,7 +321,7 @@ export class BinanceWebSocketService {
       quoteVolume: d.q,
     };
 
-    if (d.s === 'SOLUSDT') {
+    if (d.s === ACTIVE_SYMBOL) {
       this.latestTicker = ticker;
       this.broadcast({ type: 'ticker', symbol: d.s, data: ticker });
     }
@@ -331,7 +348,7 @@ export class BinanceWebSocketService {
       this.klines[this.klines.length - 1] = kline;
     } else {
       this.klines.push(kline);
-      if (this.klines.length > MAX_KLINES) {
+      if (this.klines.length > KLINES_LIMIT) {
         this.klines.shift();
       }
     }
@@ -361,7 +378,7 @@ export class BinanceWebSocketService {
     const asks = d.asks ?? d.a;
     if (!bids || !asks) return;
     this.latestDepth = { bids, asks };
-    this.broadcast({ type: 'depth', symbol: 'SOLUSDT', data: this.latestDepth });
+    this.broadcast({ type: 'depth', symbol: ACTIVE_SYMBOL, data: this.latestDepth });
   }
 
   private updateWatchlist(symbol: string, ticker: TickerData): void {
@@ -387,7 +404,7 @@ export class BinanceWebSocketService {
     setTimeout(() => {
       if (!this.destroyed) {
         this.connect();
-        this.reconnectDelay = Math.min(this.reconnectDelay * 2, MAX_RECONNECT_DELAY_MS);
+        this.reconnectDelay = Math.min(this.reconnectDelay * 2, WS_RECONNECT_MAX_MS);
       }
     }, this.reconnectDelay);
   }

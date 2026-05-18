@@ -38,7 +38,7 @@ def test_process_articles_skips_empty():
 def test_process_articles_computes_dataframe_schema():
     """Validates full integration mapping logic pushing raw strings down into DataFrames"""
     analyzer = MockAnalyzer()
-    
+
     articles = [
         {
             "source": "gdelt",
@@ -51,8 +51,9 @@ def test_process_articles_computes_dataframe_schema():
             "feed_source": "gdelt_project"
         }
     ]
-    
-    df = process_articles(articles, analyzer=analyzer)
+
+    # relevance_threshold=1.0 — this test validates output schema, not filtering behaviour
+    df = process_articles(articles, analyzer=analyzer, relevance_threshold=1.0)
     
     assert not df.empty
     assert len(df) == 1

@@ -71,24 +71,25 @@ def calculate_relevance_score(text: str) -> float:
     if not text:
         return 0.0
         
-    keywords = [
-        "solana", "sol", "crypto market", "etf", 
-        "hack", "exploit", "outage", "whale", "liquidity", 
-        "regulation", "stablecoin", "dex", "defi", "sec",
-        "bullish", "bearish", "airdrop", "listing"
+    # Tier-1: Solana-specific (high weight — article is almost certainly relevant)
+    tier1_keywords = ["solana", "sol", "jupiter", "raydium", "jito", "marinade", "phantom"]
+    # Tier-2: Broad crypto terms that add context but aren't Solana-specific
+    tier2_keywords = [
+        "crypto market", "etf", "hack", "exploit", "outage", "whale", "liquidity",
+        "regulation", "stablecoin", "dex", "defi", "sec", "bullish", "bearish",
+        "airdrop", "listing",
     ]
-    
+
     text_lower = text.lower()
     score = 0.0
-    
-    # Simple count of how many unique keywords appear
-    for kw in keywords:
+
+    for kw in tier1_keywords:
         if re.search(rf"\b{re.escape(kw)}\b", text_lower):
-            # Solana and SOL receive a slightly higher weight than generic terms
-            if kw in ["solana", "sol"]:
-                score += 1.5
-            else:
-                score += 1.0
+            score += 1.5
+
+    for kw in tier2_keywords:
+        if re.search(rf"\b{re.escape(kw)}\b", text_lower):
+            score += 1.0
 
     # Long-form articles should still survive even if they do not mention a keyword.
     if len(text_lower.split()) >= 20:

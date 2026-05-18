@@ -115,6 +115,8 @@ def latest_orderbook_unavailable(df: pd.DataFrame, expected_features: list[str],
         return False
     if "orderbook_data_available" not in df.columns:
         return False
+    if df.empty:
+        return False
 
     return int(df["orderbook_data_available"].iloc[-1]) == 0
 

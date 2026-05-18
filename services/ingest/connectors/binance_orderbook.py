@@ -11,7 +11,7 @@ import websockets
 # =========================================================
 # CONFIG
 # =========================================================
-SYMBOL = "solusdt"
+SYMBOL = os.environ.get("ACTIVE_SYMBOL", "SOLUSDT").lower().replace("/", "")
 WS_URL = f"wss://stream.binance.com:9443/ws/{SYMBOL}@depth@100ms"
 TOP_N_LEVELS = 10  # Number of price levels to include in volume calculation
 SAVE_INTERVAL_SEC = 60  # Save aggregated features every minute

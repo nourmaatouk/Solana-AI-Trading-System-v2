@@ -61,6 +61,7 @@ def build_steps(args: argparse.Namespace) -> list[PipelineStep]:
         steps.append(PipelineStep("btc_fetch", BASE_DIR / "realtime_btc_fetcher.py"))
 
     steps.append(PipelineStep("feature_builder", BASE_DIR / "realtime_feature_builder.py"))
+    steps.append(PipelineStep("hawkes_features", BASE_DIR / "realtime_hawkes_features.py", critical=False))
 
     if not args.skip_sentiment:
         if args.use_sentiment_daemon:
@@ -74,6 +75,7 @@ def build_steps(args: argparse.Namespace) -> list[PipelineStep]:
         [
             PipelineStep("feature_merge", BASE_DIR / "realtime_merge_features.py"),
             PipelineStep("predictor", BASE_DIR / "realtime_predictor.py"),
+            PipelineStep("rl_predictor", BASE_DIR.parent / "rl" / "realtime_rl_predictor.py", critical=False),
         ]
     )
 

@@ -1,11 +1,13 @@
 import { Router, Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
+import { PYTHON_API, AUTH_HEADERS, TIMEOUT_DEFAULT_MS, TIMEOUT_LONG_MS } from '../config';
+import { proxyGet } from '../utils/pythonApi';
 
 export const aiRouter = Router();
-
-const PYTHON_API = process.env.PYTHON_API ?? 'http://localhost:8000';
-const REALTIME_DIR = process.env.REALTIME_DIR ?? '/home/nourmaatouk/Solana-AI-Trading-System/services/models/classification/data/realtime';
+// Prefer env var (set by ecosystem.config.cjs); fall back to a path relative to cwd (repo root)
+const REALTIME_DIR = process.env.REALTIME_DIR
+  ?? path.join(process.cwd(), 'services/models/classification/data/realtime');
 
 function readJsonFile(filename: string): Record<string, unknown> | null {
   try {
@@ -14,17 +16,6 @@ function readJsonFile(filename: string): Record<string, unknown> | null {
     return JSON.parse(raw) as Record<string, unknown>;
   } catch {
     return null;
-  }
-}
-
-async function proxyGet(url: string, res: Response): Promise<void> {
-  try {
-    const { default: fetch } = await import('node-fetch');
-    const r = await fetch(url, { signal: AbortSignal.timeout(5000) });
-    const data = await r.json() as Record<string, unknown>;
-    res.status(r.status).json(data);
-  } catch (err) {
-    res.status(503).json({ error: 'Python API unavailable', detail: String(err) });
   }
 }
 
@@ -132,6 +123,42 @@ aiRouter.get('/walkforward', async (_req: Request, res: Response) => {
   await proxyGet(`${PYTHON_API}/walkforward`, res);
 });
 
+aiRouter.get('/accuracy', async (_req: Request, res: Response) => {
+  await proxyGet(`${PYTHON_API}/accuracy`, res);
+});
+
+aiRouter.get('/accuracy/log', async (_req: Request, res: Response) => {
+  await proxyGet(`${PYTHON_API}/accuracy/log`, res);
+});
+
+aiRouter.get('/drift', async (_req: Request, res: Response) => {
+  await proxyGet(`${PYTHON_API}/drift`, res);
+});
+
+aiRouter.get('/rl-signal', async (_req: Request, res: Response) => {
+  await proxyGet(`${PYTHON_API}/rl-signal`, res);
+});
+
+aiRouter.get('/retrain/status', async (_req: Request, res: Response) => {
+  await proxyGet(`${PYTHON_API}/retrain/status`, res);
+});
+
+aiRouter.post('/retrain/trigger', async (_req: Request, res: Response) => {
+  try {
+    const { default: fetch } = await import('node-fetch');
+    const r = await fetch(`${PYTHON_API}/retrain/trigger`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...AUTH_HEADERS },
+      body: JSON.stringify({}),
+      signal: AbortSignal.timeout(TIMEOUT_DEFAULT_MS),
+    });
+    const data = await r.json() as Record<string, unknown>;
+    res.status(r.status).json(data);
+  } catch (err) {
+    res.status(503).json({ error: 'Python API unavailable', detail: String(err) });
+  }
+});
+
 // Stop / trigger ──────────────────────────────────────────────────────────────
 
 aiRouter.post('/stop', async (_req: Request, res: Response) => {
@@ -140,9 +167,9 @@ aiRouter.post('/stop', async (_req: Request, res: Response) => {
     // Best-effort: tell Python scheduler to stop; ignore if not running
     await fetch(`${PYTHON_API}/scheduler/stop`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...AUTH_HEADERS },
       body: JSON.stringify({}),
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(TIMEOUT_DEFAULT_MS),
     }).catch(() => null);
   } catch { /* scheduler may not be running */ }
   res.json({ stopped: true, message: 'Stop signal sent. Pipeline scheduler will pause after the current run completes.' });
@@ -153,9 +180,9 @@ aiRouter.post('/resume', async (_req: Request, res: Response) => {
     const { default: fetch } = await import('node-fetch');
     const r = await fetch(`${PYTHON_API}/scheduler/run`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...AUTH_HEADERS },
       body: JSON.stringify({}),
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(TIMEOUT_LONG_MS),
     });
     const data = await r.json() as Record<string, unknown>;
     res.status(r.status).json({ ...data, resumed: true });
@@ -169,9 +196,9 @@ aiRouter.post('/trigger', async (_req: Request, res: Response) => {
     const { default: fetch } = await import('node-fetch');
     const r = await fetch(`${PYTHON_API}/scheduler/run`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...AUTH_HEADERS },
       body: JSON.stringify({}),
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(TIMEOUT_LONG_MS),
     });
     const data = await r.json() as Record<string, unknown>;
     res.status(r.status).json(data);

@@ -60,6 +60,7 @@ BUCKET_DEFAULTS: Dict[str, Any] = {
     "sentiment_momentum": 0.0,
     "news_volume_change": 0.0,
     "sentiment_spike": 0.0,
+    "gdelt_tone_mean": 0.0,  # mean of GDELT pre-computed tone in bucket, normalised [-1, +1]
 }
 
 

@@ -2,53 +2,74 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Theme variables ─────────────────────────────────────────────────────────── */
 :root {
-  --sidebar-width: 200px;
+  --bg-page:    #0b0e11;
+  --bg-panel:   #1e2329;
+  --bg-sub:     #181a20;
+  --border:     #2b3139;
+  --border-hi:  #474d57;
+  --text-1:     #eaecef;
+  --text-2:     #848e9c;
+  --text-3:     #5e6673;
+  --accent:     #8B5CF6;
+  --accent-bg:  rgba(139,92,246,0.12);
+  --accent-bd:  rgba(139,92,246,0.30);
+  --teal:       #14B8A6;
+  --teal-bg:    rgba(20,184,166,0.10);
+  --teal-bd:    rgba(20,184,166,0.30);
+  --green:      #0ecb81;
+  --green-bg:   rgba(14,203,129,0.10);
+  --green-bd:   rgba(14,203,129,0.30);
+  --red:        #f6465d;
+  --red-bg:     rgba(246,70,93,0.10);
+  --red-bd:     rgba(246,70,93,0.30);
 }
 
+[data-theme="light"] {
+  --bg-page:    #f8f9fd;
+  --bg-panel:   #ffffff;
+  --bg-sub:     #f3f4f6;
+  --border:     #e5e7eb;
+  --border-hi:  #d1d5db;
+  --text-1:     #111827;
+  --text-2:     #6b7280;
+  --text-3:     #9ca3af;
+  --accent:     #7C3AED;
+  --accent-bg:  rgba(124,58,237,0.08);
+  --accent-bd:  rgba(124,58,237,0.22);
+  --teal:       #0D9488;
+  --teal-bg:    rgba(13,148,136,0.08);
+  --teal-bd:    rgba(13,148,136,0.22);
+  --green:      #0ecb81;
+  --green-bg:   rgba(14,203,129,0.08);
+  --green-bd:   rgba(14,203,129,0.25);
+  --red:        #f6465d;
+  --red-bg:     rgba(246,70,93,0.08);
+  --red-bd:     rgba(246,70,93,0.25);
+}
+
+/* ── Base ───────────────────────────────────────────────────────────────────── */
 html, body, #root {
   height: 100%;
   margin: 0;
   padding: 0;
-  background-color: #f8f9fd;
-  color: #111827;
+  background-color: var(--bg-page);
+  color: var(--text-1);
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
   font-size: 14px;
+  transition: background-color 0.2s, color 0.2s;
 }
 
-/* Scrollbar */
-::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
-}
-::-webkit-scrollbar-track {
-  background: #f1f5f9;
-}
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 2px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
+/* ── Scrollbar ──────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: var(--bg-panel); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-hi); }
 
-/* Pulse animation for live badge */
+/* ── Animations ─────────────────────────────────────────────────────────────── */
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
 }
-.animate-pulse-dot {
-  animation: pulse-dot 1.5s ease-in-out infinite;
-}
-
-/* Skeleton shimmer */
-@keyframes shimmer {
-  0% { background-position: -468px 0; }
-  100% { background-position: 468px 0; }
-}
-.skeleton {
-  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
-  background-size: 400% 100%;
-  animation: shimmer 1.2s ease-in-out infinite;
-  border-radius: 4px;
-}
+.animate-pulse-dot { animation: pulse-dot 1.5s ease-in-out infinite; }

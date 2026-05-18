@@ -6,13 +6,44 @@ function TickerChip({ item }: { item: WatchlistItem }) {
   const pct = parseFloat(item.changePct);
   const isPos = pct >= 0;
   return (
-    <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-gray-50 border border-gray-100 flex-shrink-0">
-      <span className="text-xs font-semibold text-gray-700">{item.symbol.replace('USDT', '')}</span>
-      <span className="text-xs font-mono text-gray-800">${parseFloat(item.price).toLocaleString('en-US', { maximumFractionDigits: 4 })}</span>
-      <span className={`text-xs font-medium ${isPos ? 'text-[#16a34a]' : 'text-[#dc2626]'}`}>
+    <div className="flex items-center gap-1.5 px-3 py-1 rounded-full flex-shrink-0"
+      style={{ background: 'var(--bg-sub)', border: '1px solid var(--border)' }}>
+      <span className="text-xs font-semibold" style={{ color: 'var(--text-1)' }}>{item.symbol.replace('USDT', '')}</span>
+      <span className="text-xs font-mono" style={{ color: 'var(--text-1)' }}>${parseFloat(item.price).toLocaleString('en-US', { maximumFractionDigits: 4 })}</span>
+      <span className="text-xs font-medium" style={{ color: isPos ? 'var(--green)' : 'var(--red)' }}>
         {isPos ? '+' : ''}{pct.toFixed(2)}%
       </span>
     </div>
+  );
+}
+
+function ThemeToggle() {
+  const theme = useTradingStore((s) => s.theme);
+  const toggleTheme = useTradingStore((s) => s.toggleTheme);
+  const isDark = theme === 'dark';
+
+  return (
+    <button
+      onClick={toggleTheme}
+      title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+      className="w-8 h-8 flex items-center justify-center rounded-lg transition-colors"
+      style={{ color: 'var(--text-2)' }}
+      onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--border)')}
+      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+    >
+      {isDark ? (
+        /* Sun icon — switch to light */
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="5" />
+          <path strokeLinecap="round" d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+        </svg>
+      ) : (
+        /* Moon icon — switch to dark */
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
+        </svg>
+      )}
+    </button>
   );
 }
 
@@ -27,17 +58,19 @@ function NotifPanel({ onClose, notifications }: { onClose: () => void; notificat
   }, [onClose]);
 
   return (
-    <div ref={ref} className="absolute right-0 top-10 w-72 bg-white border border-gray-200 rounded-xl shadow-lg z-50">
-      <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-        <span className="text-sm font-semibold text-gray-800">Notifications</span>
-        <span className="text-xs text-gray-400">{notifications.length} recent</span>
+    <div ref={ref} className="absolute right-0 top-10 w-72 rounded-xl shadow-lg z-50"
+      style={{ background: 'var(--bg-panel)', border: '1px solid var(--border)' }}>
+      <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid var(--border)' }}>
+        <span className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>Notifications</span>
+        <span className="text-xs" style={{ color: 'var(--text-3)' }}>{notifications.length} recent</span>
       </div>
       <div className="max-h-64 overflow-y-auto">
         {notifications.length === 0 ? (
-          <div className="px-4 py-6 text-center text-gray-400 text-sm">No notifications yet</div>
+          <div className="px-4 py-6 text-center text-sm" style={{ color: 'var(--text-3)' }}>No notifications yet</div>
         ) : (
           notifications.map((n, i) => (
-            <div key={i} className="px-4 py-2.5 border-b border-gray-50 text-xs text-gray-600 last:border-0">
+            <div key={i} className="px-4 py-2.5 text-xs last:border-0"
+              style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-2)' }}>
               {n}
             </div>
           ))
@@ -61,17 +94,13 @@ export function TopBar() {
   const [notifications, setNotifications] = useState<string[]>([]);
   const prevSignalRef = useRef<string | null>(null);
 
-  // Ticking clock
   useEffect(() => {
-    const tick = () => {
-      setTimeStr(new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
-    };
+    const tick = () => setTimeStr(new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, []);
 
-  // Add notification when signal changes
   useEffect(() => {
     if (!signal) return;
     const action = signal.action ?? (signal as unknown as Record<string, unknown>).signal as string ?? 'HOLD';
@@ -83,7 +112,6 @@ export function TopBar() {
     }
   }, [signal]);
 
-  // Add notification on connection change
   useEffect(() => {
     if (connectionStatus === 'reconnecting') {
       const ts = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
@@ -98,20 +126,17 @@ export function TopBar() {
   const mainTicker: WatchlistItem | null = ticker
     ? { symbol: ticker.symbol, price: ticker.price, change: ticker.change, changePct: ticker.changePct, volume: ticker.volume }
     : null;
-
   const allItems: WatchlistItem[] = mainTicker
     ? [mainTicker, ...watchlist.filter((w) => w.symbol !== mainTicker.symbol)]
     : watchlist;
-
   const filteredItems = searchQuery
     ? allItems.filter((i) => i.symbol.toLowerCase().includes(searchQuery.toLowerCase()))
     : allItems;
 
-  const unreadCount = notifications.length;
-
   return (
-    <header className="h-12 bg-white border-b border-gray-100 flex items-center px-4 gap-4 flex-shrink-0" style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-      {/* Search bar or ticker strip */}
+    <header className="h-12 flex items-center px-4 gap-4 flex-shrink-0"
+      style={{ background: 'var(--bg-panel)', borderBottom: '1px solid var(--border)' }}>
+
       {searchOpen ? (
         <div className="flex-1 flex items-center gap-2 min-w-0">
           <input
@@ -120,57 +145,62 @@ export function TopBar() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search symbol… (e.g. BTC, SOL)"
-            className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            className="flex-1 text-sm rounded-lg px-3 py-1 focus:outline-none"
+            style={{ background: 'var(--bg-sub)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
           />
-          <button
-            onClick={() => { setSearchOpen(false); setSearchQuery(''); }}
-            className="text-xs text-gray-400 hover:text-gray-600 px-2"
-          >
+          <button onClick={() => { setSearchOpen(false); setSearchQuery(''); }}
+            className="text-xs px-2" style={{ color: 'var(--text-2)' }}>
             Cancel
           </button>
         </div>
       ) : (
         <div className="flex-1 flex items-center gap-2 overflow-x-auto scrollbar-hide min-w-0 pr-4">
           {allItems.length === 0 ? (
-            <span className="text-xs text-gray-400 italic">Connecting to live feed…</span>
+            <span className="text-xs italic" style={{ color: 'var(--text-3)' }}>Connecting to live feed…</span>
           ) : (
             filteredItems.map((item) => <TickerChip key={item.symbol} item={item} />)
           )}
         </div>
       )}
 
-      {/* Right side controls */}
       <div className="flex items-center gap-3 flex-shrink-0">
-        {/* Live status badge */}
         {connectionStatus === 'connected' && (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#dcfce7] border border-[#bbf7d0]">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#15803d] animate-pulse-dot" />
-            <span className="text-xs font-semibold text-[#15803d]">LIVE · {exchange.toUpperCase()}</span>
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full"
+            style={{ background: 'var(--green-bg)', border: '1px solid var(--green-bd)' }}>
+            <span className="w-1.5 h-1.5 rounded-full animate-pulse-dot" style={{ background: 'var(--green)' }} />
+            <span className="text-xs font-semibold" style={{ color: 'var(--green)' }}>LIVE · {exchange.toUpperCase()}</span>
           </div>
         )}
         {connectionStatus === 'reconnecting' && (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-            <span className="text-xs font-semibold text-amber-600">RECONNECTING</span>
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full"
+            style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent-bd)' }}>
+            <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--accent)' }} />
+            <span className="text-xs font-semibold" style={{ color: 'var(--accent)' }}>RECONNECTING</span>
           </div>
         )}
         {connectionStatus === 'disconnected' && (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-50 border border-red-200">
-            <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-            <span className="text-xs font-semibold text-red-600">OFFLINE</span>
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full"
+            style={{ background: 'var(--red-bg)', border: '1px solid var(--red-bd)' }}>
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--red)' }} />
+            <span className="text-xs font-semibold" style={{ color: 'var(--red)' }}>OFFLINE</span>
           </div>
         )}
 
-        {/* Ticking clock */}
-        <span className="text-xs text-gray-400 font-mono hidden sm:block">{timeStr}</span>
+        <span className="text-xs font-mono hidden sm:block" style={{ color: 'var(--text-3)' }}>{timeStr}</span>
+
+        {/* Theme toggle */}
+        <ThemeToggle />
 
         {/* Search */}
         <button
-          className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
+          className="w-8 h-8 flex items-center justify-center rounded-lg transition-colors"
           title="Search symbols"
           onClick={() => setSearchOpen((v) => !v)}
+          style={{ color: 'var(--text-2)' }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--border)')}
+          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
         >
-          <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
         </button>
@@ -178,16 +208,20 @@ export function TopBar() {
         {/* Notifications */}
         <div className="relative">
           <button
-            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors relative"
+            className="w-8 h-8 flex items-center justify-center rounded-lg transition-colors relative"
             title="Notifications"
             onClick={() => setNotifOpen((v) => !v)}
+            style={{ color: 'var(--text-2)' }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--border)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
           >
-            <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
             </svg>
-            {unreadCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-indigo-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
-                {unreadCount > 9 ? '9+' : unreadCount}
+            {notifications.length > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 w-4 h-4 text-[9px] font-bold rounded-full flex items-center justify-center"
+                style={{ background: 'var(--accent)', color: 'var(--bg-page)' }}>
+                {notifications.length > 9 ? '9+' : notifications.length}
               </span>
             )}
           </button>
@@ -196,8 +230,8 @@ export function TopBar() {
 
         {/* Avatar */}
         <div
-          className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
-          style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}
+          className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+          style={{ background: 'var(--accent)', color: 'var(--bg-page)' }}
           title="Nour Maatouk"
         >
           NM

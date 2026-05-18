@@ -100,13 +100,26 @@ def aggregate_sentiment_15m(df: pd.DataFrame) -> pd.DataFrame:
     # Source specific sentiments mapped iteratively and populated back onto main bounds
     gdelt_subset = df[df["source"] == "gdelt"].groupby("bucket")["sentiment_score"].mean()
     rss_subset = df[df["source"] == "rss"].groupby("bucket")["sentiment_score"].mean()
-    
+
     agg_df["gdelt_sentiment"] = gdelt_subset
     agg_df["rss_sentiment"] = rss_subset
-    
+
     # Coalescing missing overlaps to strict zeroes
     agg_df["gdelt_sentiment"] = agg_df["gdelt_sentiment"].fillna(0)
     agg_df["rss_sentiment"] = agg_df["rss_sentiment"].fillna(0)
+
+    # GDELT pre-computed tone (already normalised to [-1, +1] in sentiment_pipeline.py)
+    # Only GDELT articles carry this field; RSS rows have NaN → excluded from mean automatically
+    if "gdelt_tone_norm" in df.columns:
+        gdelt_tone_subset = (
+            df[df["source"] == "gdelt"]
+            .groupby("bucket")["gdelt_tone_norm"]
+            .mean()
+        )
+        agg_df["gdelt_tone_mean"] = gdelt_tone_subset
+        agg_df["gdelt_tone_mean"] = agg_df["gdelt_tone_mean"].fillna(0)
+    else:
+        agg_df["gdelt_tone_mean"] = 0.0
     
     # Sort chronological boundaries
     agg_df = agg_df.sort_index()

@@ -12,6 +12,7 @@ import { paperTradingRouter } from './routes/paperTrading.routes';
 import { BinanceWebSocketService } from './services/binanceWebSocket.service';
 import { SignalPoller } from './services/aiSignal.service';
 import { handleClientConnection } from './sockets/market.socket';
+import { ACTIVE_SYMBOL, ACTIVE_TIMEFRAME, KLINES_LIMIT } from './config';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
 
@@ -28,8 +29,8 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 // ── Binance WebSocket service ─────────────────────────────────────────────────
 const binanceService = new BinanceWebSocketService(wss);
 
-// Pre-load 500 candles so the chart has history on first connect
-binanceService.fetchHistoricalKlines('SOLUSDT', '15m', 500).then(() => {
+// Pre-load candles so the chart has history on first connect
+binanceService.fetchHistoricalKlines(ACTIVE_SYMBOL, ACTIVE_TIMEFRAME, KLINES_LIMIT).then(() => {
   binanceService.connect();
 }).catch(() => {
   binanceService.connect();

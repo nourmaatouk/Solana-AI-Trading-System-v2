@@ -1,6 +1,8 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+const BACKEND_URL = process.env.BACKEND_URL ?? 'http://localhost:8000';
+
 export default defineConfig(({ command }) => ({
   plugins: [react()],
   // In production the dashboard is mounted at /app/ inside FastAPI.
@@ -10,12 +12,12 @@ export default defineConfig(({ command }) => ({
     port: 5173,
     proxy: {
       // Proxy /health, /signal, etc. to the FastAPI backend during dev
-      '/health':        { target: 'http://localhost:8000', changeOrigin: true },
-      '/signal':        { target: 'http://localhost:8000', changeOrigin: true },
-      '/status':        { target: 'http://localhost:8000', changeOrigin: true },
-      '/paper-trading': { target: 'http://localhost:8000', changeOrigin: true },
-      '/preferences':   { target: 'http://localhost:8000', changeOrigin: true },
-      '/system':        { target: 'http://localhost:8000', changeOrigin: true },
+      '/health':        { target: BACKEND_URL, changeOrigin: true },
+      '/signal':        { target: BACKEND_URL, changeOrigin: true },
+      '/status':        { target: BACKEND_URL, changeOrigin: true },
+      '/paper-trading': { target: BACKEND_URL, changeOrigin: true },
+      '/preferences':   { target: BACKEND_URL, changeOrigin: true },
+      '/system':        { target: BACKEND_URL, changeOrigin: true },
     },
   },
 }))

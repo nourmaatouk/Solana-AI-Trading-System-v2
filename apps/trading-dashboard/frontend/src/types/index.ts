@@ -43,23 +43,31 @@ export interface WatchlistItem {
 export interface AISignalData {
   action?: string;
   signal?: string;
-  confidence: number;
-  fused_score: number;
-  risk_level: string;
+  /** abs(fused_score) — absent in the "no_signal" early-return */
+  confidence?: number;
+  /** Can be negative (bearish) or absent before pipeline runs */
+  fused_score?: number;
+  risk_level?: string;
   classification_signal?: string;
-  classification_probability_up: number;
-  classification_probability_down: number;
-  spoofing_confidence: number;
-  sentiment_relevance: number;
+  /** Absent when aggregator has no classifier output yet */
+  classification_probability_up?: number;
+  classification_probability_down?: number;
+  spoofing_confidence?: number;
+  sentiment_relevance?: number;
   reasoning?: {
     classification?: string;
     sentiment?: string;
     spoofing?: string;
+    rl?: string;
   };
-  reason: string;
-  generated_at_utc: string;
-  latest_close: number;
+  reason?: string;
+  generated_at_utc?: string;
+  /** Null when the pipeline has no close price available yet */
+  latest_close?: number | null;
   signal_timestamp?: string;
   alignment_score?: number;
   classification_confidence?: number;
+  confidence_gate?: number;
+  rl_signal?: string;
+  rl_confidence?: number;
 }

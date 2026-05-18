@@ -20,8 +20,8 @@ Position sizing scales with model confidence:
   At the gate boundary the bet is MIN_POSITION_SIZE (25 %) of equity;
   at maximum confidence (P=1 or P=0) the full equity is deployed.
 
-Fee (0.1 %) is applied on the deployed fraction, so:
-  equity_change = (gross − FEE_RT) × position_size
+Fee (0.1 %) and slippage (0.05 %) are applied on the deployed fraction, so:
+  equity_change = (gross − FEE_RT − SLIPPAGE_PCT) × position_size
 
 State is persisted in data/realtime/paper_trading_state*.json between runs.
 """
@@ -39,8 +39,12 @@ import numpy as np
 from config import (
     ACTIVE_HORIZON,
     CONFIDENCE_THRESHOLD,
+    FEE_RT,
+    HISTORY_MAX_ENTRIES,
     MIN_POSITION_SIZE,
     REALTIME_DIR,
+    SLIPPAGE_PCT,
+    SPOOFING_MAX_AGE_MIN,
     STOP_LOSS_PCT,
     SYMBOL,
     TAKE_PROFIT_PCT,
@@ -50,8 +54,6 @@ from config import (
 XGB_SIGNAL_PATH    = REALTIME_DIR / "last_signal.json"
 SPOOFING_PATH      = REALTIME_DIR / "spoofing_score.json"
 
-# Suppress new entries when orderbook shows self-exciting (spoofing) activity
-SPOOFING_MAX_AGE_MIN = 30   # ignore spoofing score older than this
 # Unified fused decision (preferred downstream contract for paper trading)
 FUSED_DECISION_PATH = REALTIME_DIR / "last_fused_decision.json"
 
@@ -64,10 +66,23 @@ XGB_LOG_PATH      = REALTIME_DIR / "paper_trading_log.json"
 FUSION_STATE_PATH   = REALTIME_DIR / "paper_trading_state_fusion.json"
 FUSION_LOG_PATH     = REALTIME_DIR / "paper_trading_log_fusion.json"
 HISTORY_PATH        = REALTIME_DIR / "paper_trading_history.json"
-HISTORY_MAX_ENTRIES = 200
+PREFERENCES_PATH    = REALTIME_DIR / "preferences.json"
 
-FEE_RT  = 0.001
 HORIZON = ACTIVE_HORIZON
+
+# Maps risk_level string → maximum position size fraction of equity
+_RISK_CAPS: dict[str, float] = {"low": 0.33, "medium": 0.66, "high": 1.0}
+
+
+def _risk_cap() -> float:
+    """Read risk_level from preferences.json and return the matching position cap."""
+    try:
+        prefs = json.loads(PREFERENCES_PATH.read_text())
+        lvl   = str(prefs.get("risk_level", "high")).lower()
+        return _RISK_CAPS.get(lvl, 1.0)
+    except Exception as exc:
+        print(f"  [trader] WARNING: _risk_cap() failed ({exc}); defaulting to 1.0 (max exposure)")
+        return 1.0  # fail-open
 
 # FusedDecision uses fused_score in [-1, 1] and BUY/SELL thresholds +/-0.3.
 # Mapping score -> pseudo P(up) = (score + 1) / 2 means BUY starts at 0.65.
@@ -105,7 +120,8 @@ def _classification_context() -> dict:
         return {}
     try:
         raw = _read_json(XGB_SIGNAL_PATH)
-    except Exception:
+    except Exception as exc:
+        print(f"  [trader] WARNING: failed to read XGB signal ({exc}); returning empty context")
         return {}
     if raw.get("status") != "ok":
         return {}
@@ -166,7 +182,9 @@ def _normalise_fused_decision(raw: dict) -> dict:
             or raw.get("generated_at_utc")
         ),
         "latest_close": raw.get("latest_close", ctx.get("latest_close")),
-        "confidence_threshold": raw.get("confidence_threshold", FUSED_PROB_GATE),
+        "confidence_threshold": raw.get("confidence_threshold")
+            or raw.get("confidence_gate")
+            or CONFIDENCE_THRESHOLD,
         "source_contract": "last_fused_decision.json",
     }
 
@@ -218,7 +236,9 @@ def _is_market_spoofed() -> bool:
         # Check freshness
         generated = score.get("generated_at_utc")
         if generated:
-            gen_dt  = datetime.fromisoformat(generated)
+            gen_dt  = _parse_datetime(generated)  # handles both "+00:00" and "Z" suffixes
+            if gen_dt is None:
+                return False
             age_min = (datetime.now(timezone.utc) - gen_dt).total_seconds() / 60.0
             if age_min > SPOOFING_MAX_AGE_MIN:
                 return False
@@ -367,7 +387,7 @@ def _resolve_signal() -> tuple[dict, Path, Path, str]:
             return sig, FUSION_STATE_PATH, FUSION_LOG_PATH, "LEGACY_FUSION"
 
     if not XGB_SIGNAL_PATH.exists():
-        return {}, XGB_STATE_PATH, XGB_LOG_PATH, "XGB"
+        return {"status": "no_signal"}, XGB_STATE_PATH, XGB_LOG_PATH, "XGB"
 
     raw = _read_json(XGB_SIGNAL_PATH)
     return (
@@ -406,7 +426,7 @@ def main() -> int:
     asset         = sig.get("asset", SYMBOL)
     sig_timestamp = sig.get("latest_timestamp")
     latest_close  = sig.get("latest_close")
-    gate          = float(sig.get("confidence_threshold", CONFIDENCE_THRESHOLD))
+    gate          = float(sig.get("confidence_threshold") or sig.get("confidence_gate") or CONFIDENCE_THRESHOLD)
 
     if latest_close is None:
         print("  Signal has no latest_close/price context — cannot paper trade safely.")
@@ -459,7 +479,7 @@ def main() -> int:
             raw   = (current_close - entry) / entry
             gross = raw if pos["direction"] == "UP" else -raw
             size  = pos.get("position_size", 1.0)
-            net   = (gross - FEE_RT) * size
+            net   = (gross - FEE_RT - SLIPPAGE_PCT) * size
 
             state["equity"] = round(state["equity"] * (1 + net), 8)
             if state["equity"] > state["peak_equity"]:
@@ -509,7 +529,7 @@ def main() -> int:
         and not spoofed
         and entry_block_reason is None
     ):
-        size          = _position_size(prob_up, signal, gate)
+        size          = min(_position_size(prob_up, signal, gate), _risk_cap())
         entry_price   = current_close
         entry_time    = now_utc.isoformat()
         exit_deadline = (now_utc + timedelta(minutes=HORIZON * 15)).isoformat()
@@ -602,8 +622,8 @@ def main() -> int:
         if len(history) > HISTORY_MAX_ENTRIES:
             history = history[-HISTORY_MAX_ENTRIES:]
         HISTORY_PATH.write_text(json.dumps(history, indent=2))
-    except Exception:
-        pass  # never crash the pipeline over history logging
+    except Exception as exc:
+        print(f"  [trader] WARNING: failed to write trade history: {exc}")
 
     print(f"\n  Source: {source}  |  State: {state_path.name}  |  Log: {log_path.name}")
     print("=" * 60)

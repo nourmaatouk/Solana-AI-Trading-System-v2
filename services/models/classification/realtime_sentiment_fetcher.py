@@ -39,8 +39,9 @@ except ImportError as e:
 # =========================================================
 # CONFIG
 # =========================================================
-OUTPUT_PATH = BASE_DIR / "data" / "realtime" / "latest_sentiment_15m.csv"
-CACHE_PATH = BASE_DIR / "data" / "realtime" / "processed_urls.txt"
+OUTPUT_PATH  = BASE_DIR / "data" / "realtime" / "latest_sentiment_15m.csv"
+CACHE_PATH   = BASE_DIR / "data" / "realtime" / "processed_urls.txt"
+BUFFER_PATH  = BASE_DIR / "data" / "realtime" / "sentiment_buffer.csv"
 
 REQUIRED_COLUMNS = [
     "timestamp", "sentiment_mean", "sentiment_std", "news_volume",
@@ -50,10 +51,13 @@ REQUIRED_COLUMNS = [
     "positive_event_count", "high_impact_event_count", "high_impact_event",
     "relevance_weighted_sentiment", "event_signal_mean", "event_signal_sum",
     "gdelt_volume", "rss_volume", "gdelt_sentiment", "rss_sentiment",
-    "sentiment_momentum", "news_volume_change", "sentiment_spike"
+    "sentiment_momentum", "news_volume_change", "sentiment_spike",
+    "gdelt_tone_mean",
 ]
 
-DECAY_FACTOR = 0.5  # Decay sentiment by 50% if no new news
+CACHE_TTL_HOURS = 24    # URLs older than this are evicted so recurring articles re-enter
+LOOKBACK_BUCKETS = 4    # rolling window = 4 × 15 min = 1 hour
+BUCKET_DECAY     = 0.7  # weight multiplier per older bucket (most recent = 1.0)
 
 def create_zero_row() -> pd.DataFrame:
     """Creates a fallback row with all sentiment metrics set to zero."""
@@ -62,56 +66,149 @@ def create_zero_row() -> pd.DataFrame:
     data["timestamp"] = [now]
     return normalize_layer2_bucket_frame(pd.DataFrame(data))
 
-def get_decayed_row() -> pd.DataFrame:
-    """
-    Loads previous sentiment and decays it.
-    Ensures the model doesn't just see a hard 'zero' jump.
-    """
-    if not OUTPUT_PATH.exists():
-        return create_zero_row()
-    
-    try:
-        prev_df = pd.read_csv(OUTPUT_PATH)
-        if prev_df.empty:
-            return create_zero_row()
-            
-        row = prev_df.iloc[-1].copy()
-        
-        # Apply decay to sentiment metrics (not volumes or timestamps)
-        sentiment_cols = [
-            "sentiment_mean", "sentiment_std", "max_confidence",
-            "gdelt_sentiment", "rss_sentiment", "sentiment_spike",
-            "relevance_weighted_sentiment", "sentiment_momentum",
-            "positive_ratio", "negative_ratio"
-        ]
-        
-        for col in sentiment_cols:
-            if col in row:
-                row[col] *= DECAY_FACTOR
-        
-        # Reset volumes
-        for col in ["news_volume", "gdelt_volume", "rss_volume", "event_count", "news_volume_change"]:
-            if col in row:
-                row[col] = 0.0
-                
-        row["timestamp"] = pd.Timestamp.now(tz="UTC").floor("15min")
-
-        return normalize_layer2_bucket_frame(pd.DataFrame([row]))
-    except Exception as e:
-        print(f"Decay error: {e}")
-        return create_zero_row()
 
 def load_cached_urls() -> set:
+    """
+    Reads the URL cache, drops entries older than CACHE_TTL_HOURS, rewrites
+    the file with only fresh entries, and returns the set of valid URLs.
+    Format per line: ISO-timestamp|url  (legacy bare-url lines are kept but
+    treated as ageless so they get evicted on the next successful write cycle).
+    """
     if not CACHE_PATH.exists():
         return set()
+
+    from datetime import datetime, timezone, timedelta
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=CACHE_TTL_HOURS)
+    fresh_lines: List[str] = []
+    valid_urls: set = set()
+
     with open(CACHE_PATH, "r") as f:
-        return set(line.strip() for line in f if line.strip())
+        for raw in f:
+            line = raw.strip()
+            if not line:
+                continue
+            if "|" in line:
+                ts_str, url = line.split("|", 1)
+                try:
+                    ts = datetime.fromisoformat(ts_str)
+                    if ts >= cutoff:
+                        fresh_lines.append(line)
+                        valid_urls.add(url)
+                    # else: entry is stale — drop it
+                except ValueError:
+                    # Malformed timestamp — keep as legacy
+                    fresh_lines.append(line)
+                    valid_urls.add(url)
+            else:
+                # Legacy bare-url line — count as seen but let it age out
+                # naturally (not written back, so gone after next prune cycle)
+                valid_urls.add(line)
+
+    # Rewrite with only fresh entries (pruning stale ones)
+    with open(CACHE_PATH, "w") as f:
+        for line in fresh_lines:
+            f.write(line + "\n")
+
+    return valid_urls
+
 
 def save_new_urls(new_urls: List[str]):
+    from datetime import datetime, timezone
     CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    now = datetime.now(timezone.utc).isoformat()
     with open(CACHE_PATH, "a") as f:
         for url in new_urls:
-            f.write(url + "\n")
+            f.write(f"{now}|{url}\n")
+
+# ── Rolling sentiment buffer ──────────────────────────────────────────────────
+# Columns weighted by time-decay (most recent bucket = 1.0).
+_WEIGHTED_COLS = [
+    "sentiment_mean", "sentiment_std",
+    "positive_ratio", "negative_ratio", "neutral_ratio",
+    "strong_positive_ratio", "strong_negative_ratio",
+    "relevance_weighted_sentiment", "event_signal_mean",
+    "gdelt_sentiment", "rss_sentiment", "gdelt_tone_mean",
+    "sentiment_spike", "max_confidence",
+]
+# Columns summed across the window (total activity counts).
+_SUM_COLS = [
+    "news_volume", "gdelt_volume", "rss_volume",
+    "event_count", "negative_event_count", "positive_event_count",
+    "high_impact_event_count", "event_signal_sum",
+]
+
+
+def _load_buffer() -> pd.DataFrame:
+    if not BUFFER_PATH.exists():
+        return pd.DataFrame()
+    try:
+        df = pd.read_csv(BUFFER_PATH)
+        return df.tail(LOOKBACK_BUCKETS) if not df.empty else pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+
+def _append_to_buffer(row: pd.DataFrame) -> pd.DataFrame:
+    """Append one bucket row to the rolling buffer, prune to LOOKBACK_BUCKETS, persist."""
+    existing = _load_buffer()
+    combined = pd.concat([existing, row], ignore_index=True) if not existing.empty else row.copy()
+    if "timestamp" in combined.columns:
+        combined["timestamp"] = pd.to_datetime(combined["timestamp"], errors="coerce", utc=True)
+        combined = combined.drop_duplicates(subset=["timestamp"], keep="last")
+        combined = combined.sort_values("timestamp")
+    combined = combined.tail(LOOKBACK_BUCKETS).reset_index(drop=True)
+    BUFFER_PATH.parent.mkdir(parents=True, exist_ok=True)
+    combined.to_csv(BUFFER_PATH, index=False)
+    return combined
+
+
+def _aggregate_buffer(buffer: pd.DataFrame) -> pd.DataFrame:
+    """
+    Collapse LOOKBACK_BUCKETS rows into one weighted row.
+
+    Weights decay exponentially from newest (1.0) to oldest (BUCKET_DECAY^(n-1)).
+    Continuous sentiment signals are weighted-averaged; volume/count columns are
+    summed so the model sees total activity over the full window.
+    The output timestamp is always the current 15-min floor so the pipeline
+    never receives a stale timestamp.
+    """
+    if buffer.empty:
+        return pd.DataFrame()
+
+    df = buffer.copy()
+    n = len(df)
+    weights = np.array([BUCKET_DECAY ** (n - 1 - i) for i in range(n)], dtype=float)
+    w_sum = weights.sum()
+
+    # Start from the latest row so non-aggregated fields (labels, flags) are current.
+    result = df.iloc[-1:].copy().reset_index(drop=True)
+
+    for col in _WEIGHTED_COLS:
+        if col in df.columns:
+            result[col] = float((df[col].fillna(0.0).values * weights).sum() / w_sum)
+
+    for col in _SUM_COLS:
+        if col in df.columns:
+            result[col] = float(df[col].fillna(0.0).sum())
+
+    if "high_impact_event" in df.columns:
+        result["high_impact_event"] = int(df["high_impact_event"].max())
+
+    # Always stamp with the current bucket so downstream joins stay fresh.
+    result["timestamp"] = pd.Timestamp.now(tz="UTC").floor("15min")
+
+    return result
+
+
+def _from_buffer_or_zero(reason: str) -> pd.DataFrame:
+    """Return a decay-weighted aggregate of the rolling buffer, or a zero row if empty."""
+    print(f"{reason} Using rolling buffer.")
+    buf = _load_buffer()
+    if buf.empty:
+        print("  Buffer empty — outputting zero row.")
+        return create_zero_row()
+    return normalize_layer2_bucket_frame(_aggregate_buffer(buf))
+
 
 def main():
     print("=" * 60)
@@ -147,34 +244,41 @@ def main():
         print(f"Found {len(all_articles)} total articles. {len(fresh_articles)} are new.")
         
         if not fresh_articles:
-            print("No new articles found currently. Applying sentiment decay fallback.")
-            df_final = get_decayed_row()
+            print("No new articles found this cycle.")
+            df_final = _from_buffer_or_zero("No fresh articles.")
         else:
+            # Cache all fresh URLs immediately — relevant or not — so off-topic
+            # articles are never re-evaluated on the next cycle.
+            save_new_urls([a["url"] for a in fresh_articles if a.get("url")])
+
             print(f"Processing {len(fresh_articles)} new articles with FinBERT...")
 
-            # 2. Extract sentiment
-            # threshold=2.5 requires ≥1 Solana/SOL keyword hit (1.5 pts) plus
-            # either a second keyword (1.0 pt) or a long-form article (1.0 pt).
-            # This prevents off-topic crypto articles from polluting the signal.
+            # 2. Extract sentiment — relevance filter runs before FinBERT inside process_articles.
             analyzer = FinBertSentimentAnalyzer()
-            df_processed = process_articles(fresh_articles, analyzer=analyzer, relevance_threshold=2.5)
-            
+            df_processed = process_articles(fresh_articles, analyzer=analyzer, relevance_threshold=1.5)
+
             if df_processed.empty:
-                print("No relevant articles after filtering. Applying sentiment decay fallback.")
-                df_final = get_decayed_row()
+                print("No relevant articles after filtering.")
+                df_final = _from_buffer_or_zero("No relevant articles.")
             else:
-                # Cache new URLs
-                save_new_urls(df_processed["url"].tolist())
-                
-                # 3. Aggregate into 15m intervals
+                # 3. Stamp all articles with the current 15-min bucket so they
+                # aggregate into one row (not split by their RSS publish times).
                 print("Aggregating sentiment into 15-minute buckets...")
+                df_processed["timestamp"] = pd.Timestamp.now(tz="UTC").floor("15min")
                 df_aggregated = aggregate_sentiment_15m(df_processed)
-                
+
                 if df_aggregated.empty:
-                    df_final = get_decayed_row()
+                    df_final = _from_buffer_or_zero("Aggregation empty.")
                 else:
-                    # Take only the latest bucket
-                    df_final = normalize_layer2_bucket_frame(df_aggregated.sort_values("timestamp").tail(1).copy())
+                    latest_bucket = normalize_layer2_bucket_frame(
+                        df_aggregated.sort_values("timestamp").tail(1).copy()
+                    )
+                    # 4. Append to rolling buffer and aggregate across LOOKBACK_BUCKETS.
+                    buffer = _append_to_buffer(latest_bucket)
+                    agg = _aggregate_buffer(buffer)
+                    df_final = normalize_layer2_bucket_frame(agg)
+                    print(f"  Buffer depth: {len(buffer)} bucket(s)  "
+                          f"(window = {len(buffer) * 15} min)")
 
         # 4. Final Format Check
         for col in REQUIRED_COLUMNS:
@@ -194,8 +298,7 @@ def main():
         
     except Exception as e:
         print(f"Error in sentiment fetcher: {e}")
-        print("Falling back to safety decayed row.")
-        df_final = get_decayed_row()
+        df_final = create_zero_row()
         df_final.to_csv(OUTPUT_PATH, index=False)
 
     print("=" * 60)

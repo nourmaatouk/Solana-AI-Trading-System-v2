@@ -17,9 +17,7 @@ import { socketService } from '../services/socket';
 
 const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1D'];
 
-// lightweight-charts treats all timestamps as UTC. Shift by the browser's local
-// offset so the time axis shows local time instead of UTC.
-const TZ_OFFSET_S = -new Date().getTimezoneOffset() * 60; // e.g. UTC+1 → +3600
+const TZ_OFFSET_S = -new Date().getTimezoneOffset() * 60;
 function localTime(utcSeconds: number): Time {
   return (utcSeconds + TZ_OFFSET_S) as Time;
 }
@@ -43,6 +41,8 @@ export function PriceChart() {
   const setSelectedInterval = useTradingStore((s) => s.setSelectedInterval);
   const ticker = useTradingStore((s) => s.ticker);
 
+  const theme = useTradingStore((s) => s.theme);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -52,27 +52,26 @@ export function PriceChart() {
   const ma99Ref = useRef<ISeriesApi<'Line'> | null>(null);
   const priceLineRef = useRef<IPriceLine | null>(null);
 
-  // Track previous klines length to distinguish snapshots from incremental ticks
   const prevLenRef = useRef(0);
-  // Track whether we've ever done the initial fitContent for current data set
+  const prevFirstTimeRef = useRef<number>(0);
   const hasFittedRef = useRef(false);
 
-  // Initialize chart once
   useEffect(() => {
     if (!containerRef.current) return;
 
     const chart = createChart(containerRef.current, {
       layout: {
-        background: { type: ColorType.Solid, color: '#ffffff' },
-        textColor: '#374151',
+        background: { type: ColorType.Solid, color: '#1e2329' },
+        textColor: '#848e9c',
+        attributionLogo: false,
       },
       grid: {
-        vertLines: { color: '#f3f4f6' },
-        horzLines: { color: '#f3f4f6' },
+        vertLines: { color: '#2b3139' },
+        horzLines: { color: '#2b3139' },
       },
       crosshair: { mode: CrosshairMode.Normal },
-      rightPriceScale: { borderColor: '#e5e7eb', textColor: '#6b7280' },
-      timeScale: { borderColor: '#e5e7eb', timeVisible: true, secondsVisible: false },
+      rightPriceScale: { borderColor: '#2b3139', textColor: '#848e9c' },
+      timeScale: { borderColor: '#2b3139', timeVisible: true, secondsVisible: false },
       width: containerRef.current.clientWidth,
       height: containerRef.current.clientHeight,
     });
@@ -90,8 +89,8 @@ export function PriceChart() {
     });
     chart.priceScale('volume').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
 
-    const ma7Series = chart.addLineSeries({ color: '#f0b90b', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
-    const ma25Series = chart.addLineSeries({ color: '#6366f1', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+    const ma7Series = chart.addLineSeries({ color: '#8B5CF6', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+    const ma25Series = chart.addLineSeries({ color: '#14B8A6', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
     const ma99Series = chart.addLineSeries({ color: '#f6465d', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
 
     chartRef.current = chart;
@@ -123,7 +122,6 @@ export function PriceChart() {
     };
   }, []);
 
-  // Handle kline updates — snapshot vs. incremental
   useEffect(() => {
     if (!candleRef.current || !volumeRef.current || klines.length === 0) {
       prevLenRef.current = 0;
@@ -132,15 +130,14 @@ export function PriceChart() {
 
     const prev = prevLenRef.current;
     const curr = klines.length;
-    // A snapshot is: first load (prev=0→many), interval change (cleared to 0 then refilled),
-    // or any jump larger than 1 candle.
-    const isSnapshot = curr - prev > 1 || prev === 0;
+    const currFirstTime = klines[0]?.time ?? 0;
+    const isSnapshot = curr - prev > 1 || prev === 0 || currFirstTime !== prevFirstTimeRef.current;
     prevLenRef.current = curr;
+    prevFirstTimeRef.current = currFirstTime;
 
     const last = klines[curr - 1];
 
     if (isSnapshot) {
-      // Full redraw — only happens on initial load or interval change
       const candleData: CandlestickData[] = klines.map((k) => ({
         time: localTime(k.time),
         open: parseFloat(k.open),
@@ -167,13 +164,11 @@ export function PriceChart() {
       ma25Ref.current?.setData(ma25Data);
       ma99Ref.current?.setData(ma99Data);
 
-      // fitContent only once per dataset — preserves user zoom on subsequent ticks
       if (!hasFittedRef.current) {
         chartRef.current?.timeScale().fitContent();
         hasFittedRef.current = true;
       }
     } else {
-      // Incremental tick — update only the last candle (never resets zoom)
       candleRef.current.update({
         time: localTime(last.time),
         open: parseFloat(last.open),
@@ -186,7 +181,6 @@ export function PriceChart() {
         value: parseFloat(last.volume),
         color: parseFloat(last.close) >= parseFloat(last.open) ? '#0ecb8140' : '#f6465d40',
       });
-      // Update only the last MA point
       const closes = klines.map((k) => parseFloat(k.close));
       const i = curr - 1;
       const ma7v = i >= 6  ? closes.slice(i - 6,  i + 1).reduce((a, b) => a + b, 0) / 7  : null;
@@ -198,7 +192,6 @@ export function PriceChart() {
     }
   }, [klines]);
 
-  // Live price line — only touch the priceLine object, never the candle data
   useEffect(() => {
     if (!ticker || !candleRef.current) return;
     const price = parseFloat(ticker.price);
@@ -208,7 +201,7 @@ export function PriceChart() {
     }
     priceLineRef.current = candleRef.current.createPriceLine({
       price,
-      color: '#f0b90b',
+      color: '#8B5CF6',
       lineWidth: 1,
       lineStyle: LineStyle.Dashed,
       axisLabelVisible: true,
@@ -216,48 +209,66 @@ export function PriceChart() {
     });
   }, [ticker]);
 
+  // Re-apply chart colors when theme switches
+  useEffect(() => {
+    if (!chartRef.current) return;
+    const isDark = theme === 'dark';
+    chartRef.current.applyOptions({
+      layout: {
+        background: { type: ColorType.Solid, color: isDark ? '#1e2329' : '#ffffff' },
+        textColor: isDark ? '#848e9c' : '#6b7280',
+      },
+      grid: {
+        vertLines: { color: isDark ? '#2b3139' : '#f3f4f6' },
+        horzLines: { color: isDark ? '#2b3139' : '#f3f4f6' },
+      },
+      rightPriceScale: { borderColor: isDark ? '#2b3139' : '#e5e7eb', textColor: isDark ? '#848e9c' : '#6b7280' },
+      timeScale: { borderColor: isDark ? '#2b3139' : '#e5e7eb' },
+    });
+  }, [theme]);
+
   const setKlines = useTradingStore((s) => s.setKlines);
 
   const handleIntervalChange = useCallback((interval: string) => {
     setSelectedInterval(interval);
-    // Clear klines → sets prevLen to 0 → next snapshot triggers fitContent again
     setKlines([]);
     hasFittedRef.current = false;
+    prevFirstTimeRef.current = 0;
     socketService.send({ type: 'changeInterval', interval });
   }, [setSelectedInterval, setKlines]);
 
   return (
-    <div className="bg-white flex flex-col h-full">
+    <div className="flex flex-col h-full" style={{ background: 'var(--bg-panel)' }}>
       {/* Toolbar */}
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-200">
+      <div className="flex items-center gap-2 px-3 py-1.5" style={{ borderBottom: '1px solid var(--border)' }}>
         <div className="flex items-center gap-1">
           {TIMEFRAMES.map((tf) => (
             <button
               key={tf}
               onClick={() => handleIntervalChange(tf)}
-              className={`px-2 py-0.5 rounded text-xs transition-colors ${
-                selectedInterval === tf
-                  ? 'bg-indigo-50 text-indigo-600 border border-indigo-200'
-                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-              }`}
+              className="px-2 py-0.5 rounded text-xs transition-colors"
+              style={selectedInterval === tf
+                ? { background: 'var(--accent-bg)', color: 'var(--accent)', border: '1px solid var(--accent-bd)' }
+                : { color: 'var(--text-2)', border: '1px solid transparent' }
+              }
             >
               {tf}
             </button>
           ))}
         </div>
-        <div className="h-3 w-px bg-[#2b3139]" />
+        <div className="h-3 w-px" style={{ background: 'var(--border)' }} />
         <div className="flex items-center gap-3 text-[10px]">
           <span className="flex items-center gap-1">
-            <span className="w-3 h-0.5 bg-[#f0b90b] inline-block" />
-            <span className="text-gray-400">MA7</span>
+            <span className="w-3 h-0.5 inline-block" style={{ background: '#8B5CF6' }} />
+            <span style={{ color: 'var(--text-3)' }}>MA7</span>
           </span>
           <span className="flex items-center gap-1">
-            <span className="w-3 h-0.5 bg-indigo-500 inline-block" />
-            <span className="text-gray-400">MA25</span>
+            <span className="w-3 h-0.5 inline-block" style={{ background: '#14B8A6' }} />
+            <span style={{ color: 'var(--text-3)' }}>MA25</span>
           </span>
           <span className="flex items-center gap-1">
-            <span className="w-3 h-0.5 bg-[#f6465d] inline-block" />
-            <span className="text-gray-400">MA99</span>
+            <span className="w-3 h-0.5 inline-block" style={{ background: '#f6465d' }} />
+            <span style={{ color: 'var(--text-3)' }}>MA99</span>
           </span>
         </div>
       </div>
@@ -266,7 +277,7 @@ export function PriceChart() {
       <div ref={containerRef} className="flex-1 relative">
         {klines.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="text-gray-400 text-sm">Waiting for market data...</div>
+            <div className="text-sm" style={{ color: 'var(--text-3)' }}>Waiting for market data...</div>
           </div>
         )}
       </div>

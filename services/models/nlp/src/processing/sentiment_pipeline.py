@@ -6,9 +6,9 @@ from src.contracts.nlp_event_contract import normalize_nlp_event
 
 
 def process_articles(
-    articles: List[Dict], 
+    articles: List[Dict],
     analyzer: Optional[FinBertSentimentAnalyzer] = None,
-    relevance_threshold: float = 0.5
+    relevance_threshold: float = 1.5,
 ) -> pd.DataFrame:
     """
     Processes raw articles fetched from external feeds.
@@ -47,6 +47,10 @@ def process_articles(
         etype = classify_event_type(cleaned_text)
         eweight = get_event_weight(etype)
 
+        # gdelt_tone is pre-computed GDELT sentiment (-100..+100); None for RSS articles
+        raw_gdelt_tone = article.get("gdelt_tone")
+        gdelt_tone_norm = float(raw_gdelt_tone) / 100.0 if raw_gdelt_tone is not None else None
+
         processed_data.append(normalize_nlp_event({
             "timestamp": article.get("published_at"),
             "source": article.get("source"),
@@ -64,7 +68,8 @@ def process_articles(
             "positive_prob": sentiment_results.get("positive_prob"),
             "sentiment_score": score,
             "confidence": sentiment_results.get("confidence"),
-            "sentiment_label": sentiment_results.get("sentiment_label")
+            "sentiment_label": sentiment_results.get("sentiment_label"),
+            "gdelt_tone_norm": gdelt_tone_norm,  # normalized to [-1, +1]; None for non-GDELT
         }))
 
     kept_count = len(processed_data)

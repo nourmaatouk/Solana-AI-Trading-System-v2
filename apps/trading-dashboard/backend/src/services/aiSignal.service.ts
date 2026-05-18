@@ -2,8 +2,10 @@ import fs from 'fs';
 import path from 'path';
 import WebSocket, { WebSocketServer } from 'ws';
 
-const REALTIME_DIR = process.env.REALTIME_DIR ?? '/home/nourmaatouk/Solana-AI-Trading-System/services/models/classification/data/realtime';
-const POLL_INTERVAL_MS = 10_000;
+import { SIGNAL_POLL_INTERVAL_MS } from '../config';
+
+const REALTIME_DIR = process.env.REALTIME_DIR
+  ?? path.join(process.cwd(), 'services/models/classification/data/realtime');
 
 export interface FusedDecision {
   status?: string;
@@ -50,8 +52,8 @@ export class SignalPoller {
 
   start(): void {
     this.poll();
-    this.interval = setInterval(() => this.poll(), POLL_INTERVAL_MS);
-    console.log('[signal-poller] Started, polling every', POLL_INTERVAL_MS / 1000, 's');
+    this.interval = setInterval(() => this.poll(), SIGNAL_POLL_INTERVAL_MS);
+    console.log('[signal-poller] Started, polling every', SIGNAL_POLL_INTERVAL_MS / 1000, 's');
   }
 
   stop(): void {

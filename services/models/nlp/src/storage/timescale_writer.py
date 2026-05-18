@@ -14,7 +14,7 @@ logger = get_logger(__name__)
 
 _TABLE = "sentiment_features_15m"
 
-_CREATE_SQL = f"""
+_CREATE_TABLE_SQL = f"""
 CREATE TABLE IF NOT EXISTS {_TABLE} (
     time                         TIMESTAMPTZ NOT NULL,
     sentiment_mean               DOUBLE PRECISION,
@@ -38,8 +38,9 @@ CREATE TABLE IF NOT EXISTS {_TABLE} (
     sentiment_momentum           DOUBLE PRECISION,
     sentiment_spike              DOUBLE PRECISION
 );
-SELECT create_hypertable('{_TABLE}', 'time', if_not_exists => TRUE);
 """
+
+_CREATE_HYPERTABLE_SQL = f"SELECT create_hypertable('{_TABLE}', 'time', if_not_exists => TRUE);"
 
 # Columns in insert order (timestamp → 'time' in DB)
 _INSERT_COLS = [
@@ -81,13 +82,22 @@ class TimescaleWriter:
             return False
         try:
             with conn.cursor() as cur:
-                cur.execute(_CREATE_SQL)
+                cur.execute(_CREATE_TABLE_SQL)
             conn.commit()
-            return True
         except Exception as e:
             conn.rollback()
             logger.warning(f"Table creation failed: {e}")
             return False
+        # Hypertable conversion is best-effort — requires TimescaleDB extension.
+        # Plain PostgreSQL tables work fine without it.
+        try:
+            with conn.cursor() as cur:
+                cur.execute(_CREATE_HYPERTABLE_SQL)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            logger.info(f"TimescaleDB not available — {_TABLE} will use plain PostgreSQL.")
+        return True
 
     def write(self, df: pd.DataFrame) -> int:
         """Insert aggregated rows. Returns count of rows written, 0 on any failure."""

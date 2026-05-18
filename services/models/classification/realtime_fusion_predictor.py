@@ -55,6 +55,7 @@ from config import (
     MODEL_DIR,
     PROCESSED_DIR,
     REALTIME_DIR,
+    SENTIMENT_CAP,
 )
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
@@ -68,7 +69,6 @@ TEN_PATH           = MODEL_DIR / f"ten_h{HORIZON}.pt"
 STACKER_PATH       = MODEL_DIR / f"fusion_stacker_h{HORIZON}.pkl"
 META_PATH          = MODEL_DIR / f"fusion_meta_h{HORIZON}.json"
 
-SENTIMENT_CAP = 0.04
 TEN_META_KEYS = {
     "seq_len",
     "ten_d_model",

@@ -1,6 +1,7 @@
 import WebSocket from 'ws';
 import { BinanceWebSocketService } from '../services/binanceWebSocket.service';
 import { SignalPoller } from '../services/aiSignal.service';
+import { ACTIVE_SYMBOL, ACTIVE_TIMEFRAME, KLINES_LIMIT } from '../config';
 
 export function handleClientConnection(
   ws: WebSocket,
@@ -12,22 +13,22 @@ export function handleClientConnection(
   // Send current cached state immediately on connect
   const ticker = binanceService.getLatestTicker();
   if (ticker) {
-    ws.send(JSON.stringify({ type: 'ticker', symbol: 'SOLUSDT', data: ticker }));
+    ws.send(JSON.stringify({ type: 'ticker', symbol: ACTIVE_SYMBOL, data: ticker }));
   }
 
   const depth = binanceService.getLatestDepth();
   if (depth) {
-    ws.send(JSON.stringify({ type: 'depth', symbol: 'SOLUSDT', data: depth }));
+    ws.send(JSON.stringify({ type: 'depth', symbol: ACTIVE_SYMBOL, data: depth }));
   }
 
   const klines = binanceService.getLatestKlines();
   if (klines.length > 0) {
-    ws.send(JSON.stringify({ type: 'klines_snapshot', symbol: 'SOLUSDT', data: klines }));
+    ws.send(JSON.stringify({ type: 'klines_snapshot', symbol: ACTIVE_SYMBOL, data: klines }));
   }
 
   const trades = binanceService.getLatestTrades();
   if (trades.length > 0) {
-    ws.send(JSON.stringify({ type: 'trades_snapshot', symbol: 'SOLUSDT', data: trades }));
+    ws.send(JSON.stringify({ type: 'trades_snapshot', symbol: ACTIVE_SYMBOL, data: trades }));
   }
 
   const signal = signalPoller.getLatestSignal();
@@ -51,18 +52,20 @@ export function handleClientConnection(
         // Client wants to change symbol/interval — acknowledged
         ws.send(JSON.stringify({
           type: 'subscribed',
-          symbol: msg.symbol ?? 'SOLUSDT',
-          interval: msg.interval ?? '15m',
+          symbol: msg.symbol ?? ACTIVE_SYMBOL,
+          interval: msg.interval ?? ACTIVE_TIMEFRAME,
         }));
       } else if (msg.type === 'changeInterval') {
-        const interval = msg.interval ?? '15m';
+        const interval = msg.interval ?? ACTIVE_TIMEFRAME;
         // Fetch REST history for the new interval, then reconnect WS stream to get live updates
-        binanceService.fetchHistoricalKlines('SOLUSDT', interval, 500).then(() => {
+        binanceService.fetchHistoricalKlines(ACTIVE_SYMBOL, interval, KLINES_LIMIT).then(() => {
+          // Close old stream BEFORE broadcasting so no stale old-interval klines
+          // arrive between the snapshot send and the reconnect.
+          binanceService.setKlineInterval(interval);
           const snapshot = binanceService.getLatestKlines();
-          ws.send(JSON.stringify({ type: 'klines_snapshot', symbol: 'SOLUSDT', data: snapshot }));
-          binanceService.setKlineInterval(interval); // reconnect WS with new kline stream
+          ws.send(JSON.stringify({ type: 'klines_snapshot', symbol: ACTIVE_SYMBOL, data: snapshot }));
         }).catch(() => {
-          ws.send(JSON.stringify({ type: 'klines_snapshot', symbol: 'SOLUSDT', data: [] }));
+          ws.send(JSON.stringify({ type: 'klines_snapshot', symbol: ACTIVE_SYMBOL, data: [] }));
         });
       }
     } catch { /* ignore malformed */ }

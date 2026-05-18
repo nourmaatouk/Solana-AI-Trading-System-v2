@@ -1,34 +1,35 @@
 import { Router, Request, Response } from 'express';
+import { PYTHON_API, AUTH_HEADERS, TIMEOUT_PREFS_MS, TIMEOUT_PIPELINE_MS } from '../config';
+import { proxyGet } from '../utils/pythonApi';
 
 export const paperTradingRouter = Router();
-
-const PYTHON_API = process.env.PYTHON_API ?? 'http://localhost:8000';
-
-async function proxyGet(url: string, res: Response): Promise<void> {
-  try {
-    const { default: fetch } = await import('node-fetch');
-    const r = await fetch(url, { signal: AbortSignal.timeout(5000) });
-    const data = await r.json() as Record<string, unknown>;
-    res.status(r.status).json(data);
-  } catch (err) {
-    res.status(503).json({ error: 'Python API unavailable', detail: String(err) });
-  }
-}
 
 // GET /api/paper-trading — proxies to Python /paper-trading
 paperTradingRouter.get('/', async (_req: Request, res: Response) => {
   await proxyGet(`${PYTHON_API}/paper-trading`, res);
 });
 
-// POST /api/paper-trading/execute — triggers a pipeline run (simulated trade)
-paperTradingRouter.post('/execute', async (_req: Request, res: Response) => {
+// POST /api/paper-trading/execute — saves risk_level preference then triggers a pipeline run
+paperTradingRouter.post('/execute', async (req: Request, res: Response) => {
   try {
     const { default: fetch } = await import('node-fetch');
+    const body = req.body as Record<string, unknown>;
+
+    // Persist risk_level so the paper trader uses it on the next run
+    if (body.risk_level) {
+      await fetch(`${PYTHON_API}/preferences`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...AUTH_HEADERS },
+        body: JSON.stringify({ risk_level: String(body.risk_level).toLowerCase() }),
+        signal: AbortSignal.timeout(TIMEOUT_PREFS_MS),
+      }).catch(() => null);
+    }
+
     const r = await fetch(`${PYTHON_API}/scheduler/run`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...AUTH_HEADERS },
       body: JSON.stringify({}),
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(TIMEOUT_PIPELINE_MS),
     });
     const data = await r.json() as Record<string, unknown>;
     res.status(r.status).json(data);

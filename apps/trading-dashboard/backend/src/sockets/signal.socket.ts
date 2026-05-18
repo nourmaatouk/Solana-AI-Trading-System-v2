@@ -1,5 +1,6 @@
 import WebSocket, { WebSocketServer } from 'ws';
 import { SignalPoller, FusedDecision } from '../services/aiSignal.service';
+import { SIGNAL_POLL_INTERVAL_MS } from '../config';
 
 export interface AISignalMessage {
   type: 'signal';
@@ -21,5 +22,5 @@ export function startSignalBroadcast(wss: WebSocketServer, poller: SignalPoller)
     if (signal) {
       broadcastSignal(wss, signal);
     }
-  }, 10_000);
+  }, SIGNAL_POLL_INTERVAL_MS);
 }

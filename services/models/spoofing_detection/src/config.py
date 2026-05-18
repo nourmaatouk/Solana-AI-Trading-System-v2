@@ -39,6 +39,7 @@ Any model trained on LOBSTER data uses d_input=N_FEATURES_LOBSTER=49.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 # ── Feature dimensions ────────────────────────────────────────────────────────
@@ -53,7 +54,7 @@ DEFAULT_WINDOW_STRIDE: int = 50    # 50% overlap
 DEFAULT_N_LEVELS: int = 15  # depth levels in Kaggle data; LOBSTER uses 10
 
 # ── Assets ────────────────────────────────────────────────────────────────────
-DEFAULT_ASSETS: list[str] = ["BTC", "ETH", "SOL"]
+DEFAULT_ASSETS: list[str] = os.environ.get("DEFAULT_ASSETS", "BTC,ETH,SOL").split(",")
 DEFAULT_FREQUENCY: str = "1min"
 
 # ── Model hyperparameters (paper-aligned) ─────────────────────────────────────

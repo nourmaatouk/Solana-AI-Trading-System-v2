@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     RAW_DIR: str = "data/raw"
     TIMEFRAME_MINUTES: int = 15
 
-    # Redis Cache
+    # Redis Cache — override in production via REDIS_URL env var
     REDIS_URL: str = "redis://localhost:6379/0"
     REDIS_TTL_SECONDS: int = 3600
 

@@ -3,8 +3,8 @@
 Realtime Pipeline Scheduler
 
 Runs the full pipeline on a fixed interval (default: every 15 minutes).
-Also triggers the sentiment daemon when its cache is older than
-SENTIMENT_MAX_AGE_MINUTES (default: 30).
+The sentiment daemon runs as a separate PM2 process; this scheduler only
+drives the classification/fusion pipeline.
 
 Usage:
   python realtime_scheduler.py                    # daemon, 15-min interval
@@ -24,14 +24,14 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-BASE_DIR     = Path(__file__).resolve().parent
-REALTIME_DIR = BASE_DIR / "data" / "realtime"
-STATUS_PATH  = REALTIME_DIR / "scheduler_status.json"
-SENTIMENT_STATUS_PATH = REALTIME_DIR / "sentiment_status.json"
+BASE_DIR          = Path(__file__).resolve().parent
+REALTIME_DIR      = BASE_DIR / "data" / "realtime"
+STATUS_PATH       = REALTIME_DIR / "scheduler_status.json"
+STOP_FLAG_PATH    = REALTIME_DIR / "scheduler_stop.flag"
 
-DEFAULT_INTERVAL_SECONDS  = 900   # 15 minutes
-DEFAULT_PIPELINE_TIMEOUT  = 120   # seconds per pipeline run
-SENTIMENT_MAX_AGE_MINUTES = 30
+sys.path.insert(0, str(BASE_DIR))
+from config import SCHEDULER_INTERVAL_SECONDS as DEFAULT_INTERVAL_SECONDS  # noqa: E402
+from config import PIPELINE_TIMEOUT_SECONDS   as DEFAULT_PIPELINE_TIMEOUT  # noqa: E402
 
 _shutdown = False
 
@@ -40,51 +40,12 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _age_minutes(path: Path) -> float | None:
-    try:
-        data = json.loads(path.read_text())
-        raw = (data.get("last_run_utc") or data.get("generated_at_utc")
-               or data.get("started_at_utc"))
-        if not raw:
-            return None
-        ts = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
-        return (datetime.now(timezone.utc) - ts.astimezone(timezone.utc)).total_seconds() / 60
-    except Exception:
-        return None
-
-
 def _write_status(payload: dict) -> None:
     REALTIME_DIR.mkdir(parents=True, exist_ok=True)
     STATUS_PATH.write_text(json.dumps(payload, indent=2))
 
 
 # ── Sub-tasks ─────────────────────────────────────────────────────────────────
-
-def _maybe_refresh_sentiment(timeout: int = 180) -> dict:
-    """Run the sentiment daemon only when its cache is stale."""
-    age = _age_minutes(SENTIMENT_STATUS_PATH) if SENTIMENT_STATUS_PATH.exists() else None
-    if age is not None and age < SENTIMENT_MAX_AGE_MINUTES:
-        return {"triggered": False, "reason": f"fresh ({age:.1f} min old)"}
-
-    label = f"{age:.1f} min old" if age is not None else "missing"
-    print(f"  [scheduler] Sentiment cache {label} — refreshing…")
-    try:
-        proc = subprocess.run(
-            [sys.executable,
-             str(BASE_DIR / "realtime_sentiment_daemon.py"),
-             "--once"],
-            cwd=BASE_DIR,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
-        ok = proc.returncode == 0
-        return {"triggered": True, "status": "ok" if ok else "error",
-                "returncode": proc.returncode}
-    except subprocess.TimeoutExpired:
-        return {"triggered": True, "status": "timeout", "returncode": 124}
-    except Exception as exc:
-        return {"triggered": True, "status": "error", "error": str(exc)}
 
 
 def _run_pipeline(timeout: int = DEFAULT_PIPELINE_TIMEOUT) -> dict:
@@ -123,11 +84,36 @@ def _run_pipeline(timeout: int = DEFAULT_PIPELINE_TIMEOUT) -> dict:
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
+def _run_post_step(script_name: str) -> dict:
+    """Run a post-pipeline helper script (accuracy tracker / drift detector)."""
+    script = BASE_DIR / script_name
+    started = _now()
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(script)],
+            cwd=BASE_DIR,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        status = "ok" if proc.returncode == 0 else "error"
+        return {"status": status, "started_at_utc": started, "finished_at_utc": _now()}
+    except Exception as exc:
+        return {"status": "error", "error": str(exc),
+                "started_at_utc": started, "finished_at_utc": _now()}
+
+
 def run_once(pipeline_timeout: int = DEFAULT_PIPELINE_TIMEOUT) -> dict:
-    """One full scheduler cycle: sentiment refresh (if needed) + pipeline."""
-    sentiment = _maybe_refresh_sentiment()
-    pipeline  = _run_pipeline(pipeline_timeout)
-    return {"sentiment": sentiment, "pipeline": pipeline}
+    """One full scheduler cycle: pipeline → accuracy tracker → drift detector."""
+    pipeline = _run_pipeline(pipeline_timeout)
+
+    print("  [scheduler] Running accuracy tracker…")
+    accuracy = _run_post_step("realtime_accuracy_tracker.py")
+
+    print("  [scheduler] Running drift detector…")
+    drift = _run_post_step("realtime_drift_detector.py")
+
+    return {"pipeline": pipeline, "accuracy": accuracy, "drift": drift}
 
 
 def run_daemon(interval: int, pipeline_timeout: int) -> None:
@@ -147,6 +133,23 @@ def run_daemon(interval: int, pipeline_timeout: int) -> None:
     print(f"[scheduler] Status file: {STATUS_PATH}")
 
     while not _shutdown:
+        # Check for stop flag written by POST /scheduler/stop
+        if STOP_FLAG_PATH.exists():
+            _write_status({
+                "status": "paused",
+                "last_run_utc": None,
+                "next_run_utc": None,
+                "interval_seconds": interval,
+                "n_runs": n_runs,
+                "last_pipeline_status": None,
+            })
+            print("[scheduler] Stop flag detected — paused. Waiting for flag to be cleared…")
+            while STOP_FLAG_PATH.exists() and not _shutdown:
+                time.sleep(5)
+            if _shutdown:
+                break
+            print("[scheduler] Stop flag cleared — resuming.")
+
         n_runs += 1
         print(f"\n[scheduler] === Run #{n_runs} at {_now()} ===")
 
@@ -171,7 +174,7 @@ def run_daemon(interval: int, pipeline_timeout: int) -> None:
             "interval_seconds": interval,
             "n_runs": n_runs,
             "last_pipeline_status": result["pipeline"]["status"],
-            "last_sentiment_triggered": result["sentiment"].get("triggered", False),
+            "last_sentiment_triggered": False,
         })
 
         print(f"[scheduler] Run #{n_runs} done — "
@@ -218,7 +221,7 @@ def main() -> int:
             "interval_seconds": args.interval,
             "n_runs": 1,
             "last_pipeline_status": result["pipeline"]["status"],
-            "last_sentiment_triggered": result["sentiment"].get("triggered", False),
+            "last_sentiment_triggered": False,
             "mode": "once",
         })
         print(f"\nPipeline: {result['pipeline']['status']}")

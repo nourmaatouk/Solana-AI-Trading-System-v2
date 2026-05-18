@@ -42,17 +42,21 @@ def test_gdelt_fetcher(monkeypatch):
     assert "published_at" in article
 
 
-def test_gdelt_fetcher_429_handling(monkeypatch):
-    """Test GDELT fetcher safely handles 429 Too Many Requests."""
+def test_gdelt_fetcher_429_handling(monkeypatch, tmp_path):
+    """Test GDELT fetcher safely handles 429 Too Many Requests with no cache."""
+    import src.fetchers.gdelt_fetcher as gf
+
     class Mock429Response:
         status_code = 429
         def raise_for_status(self): pass
-        
+
     monkeypatch.setattr(requests, "get", lambda *args, **kwargs: Mock429Response())
-    
+    # Point cache at a nonexistent file so the fallback returns nothing
+    monkeypatch.setattr(gf, "_CACHE_PATH", tmp_path / "empty_cache.json")
+
     fetcher = GdeltFetcher()
     results = fetcher.fetch()
-    
+
     assert isinstance(results, list)
     assert len(results) == 0
 

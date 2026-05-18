@@ -28,7 +28,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from config import SYMBOL
+from config import CONFIDENCE_THRESHOLD, SYMBOL
 
 # ── path setup ──────────────────────────────────────────────────────────────
 BASE_DIR   = Path(__file__).resolve().parent
@@ -37,7 +37,13 @@ FUSION_SRC = MODELS_DIR / "fusion" / "src"
 if str(FUSION_SRC) not in sys.path:
     sys.path.insert(0, str(FUSION_SRC))
 
-from fusion_aggregator import FusionAggregator          # noqa: E402
+from fusion_aggregator import (                          # noqa: E402
+    FusionAggregator,
+    SPOOFING_SEVERITY_HIGH,
+    SPOOFING_SEVERITY_MEDIUM,
+    SENTIMENT_POSITIVE_THRESHOLD,
+    SENTIMENT_NEGATIVE_THRESHOLD,
+)
 from fusion_contracts import (                           # noqa: E402
     ClassificationSignal,
     SentimentSignal,
@@ -49,7 +55,17 @@ REALTIME_DIR        = BASE_DIR / "data" / "realtime"
 SIGNAL_PATH         = REALTIME_DIR / "last_signal.json"
 SPOOFING_PATH       = REALTIME_DIR / "spoofing_score.json"
 SENTIMENT_FEAT_PATH = REALTIME_DIR / "latest_features_with_sentiment.csv"
+RL_SIGNAL_PATH      = REALTIME_DIR / "last_rl_signal.json"
 OUTPUT_PATH         = REALTIME_DIR / "last_fused_decision.json"
+
+# ── RL weight ─────────────────────────────────────────────────────────────────
+# Loaded from fusion config so it stays in sync with WEIGHT_RL constant.
+import importlib.util as _ilu
+_fc_path = FUSION_SRC.parent / "config.py"
+_fc_spec = _ilu.spec_from_file_location("fusion.config", _fc_path)
+_fc_mod  = _ilu.module_from_spec(_fc_spec)
+_fc_spec.loader.exec_module(_fc_mod)
+WEIGHT_RL = float(getattr(_fc_mod, "WEIGHT_RL", 0.30))
 
 _AGGREGATOR = FusionAggregator()
 
@@ -94,8 +110,8 @@ def _load_classification_context() -> dict:
     try:
         if ctx.get("classification_probability_up") is None and raw.get("probability_down") is not None:
             ctx["classification_probability_up"] = 1.0 - float(raw["probability_down"])
-    except Exception:
-        pass
+    except Exception as exc:
+        print(f"  [fusion] WARNING: prob_up fallback calculation failed: {exc}")
     return ctx
 
 def _load_classification_signal() -> ClassificationSignal | None:
@@ -122,6 +138,16 @@ def _load_classification_signal() -> ClassificationSignal | None:
             signal_label = "HOLD"
 
         confidence = max(prob_up, prob_down)
+        # Use directional probability so SELL signals carry full weight in the
+        # fused score formula (which does −prediction for SELL). Using prob_up
+        # for SELL would give −0.187 instead of −0.813, systematically blocking
+        # strong sell signals from breaching the SELL_THRESHOLD.
+        if signal_label == "SELL":
+            directional_pred = prob_down
+        elif signal_label == "BUY":
+            directional_pred = prob_up
+        else:
+            directional_pred = confidence
 
         ts_raw = raw.get("latest_timestamp") or raw.get("generated_at_utc")
         try:
@@ -131,7 +157,7 @@ def _load_classification_signal() -> ClassificationSignal | None:
 
         return ClassificationSignal(
             timestamp=ts,
-            prediction=prob_up,
+            prediction=directional_pred,
             signal=signal_label,
             confidence=confidence,
         )
@@ -157,9 +183,9 @@ def _load_spoofing_signal() -> SpoofingSignal | None:
         is_susp     = bool(raw.get("is_suspicious", False))
         n_events    = int(raw.get("n_events", 0))
 
-        if confidence > 0.6 or is_susp:
+        if confidence > SPOOFING_SEVERITY_HIGH or is_susp:
             severity = "high"
-        elif confidence > 0.3:
+        elif confidence > SPOOFING_SEVERITY_MEDIUM:
             severity = "medium"
         else:
             severity = "low"
@@ -201,9 +227,9 @@ def _load_sentiment_signal() -> SentimentSignal | None:
         if np.isnan(score):
             score = 0.0
 
-        if score > 0.1:
+        if score > SENTIMENT_POSITIVE_THRESHOLD:
             label = "POSITIVE"
-        elif score < -0.1:
+        elif score < SENTIMENT_NEGATIVE_THRESHOLD:
             label = "NEGATIVE"
         else:
             label = "NEUTRAL"
@@ -235,6 +261,30 @@ def _load_sentiment_signal() -> SentimentSignal | None:
         return None
 
 
+def _load_rl_signal() -> dict | None:
+    """Read last_rl_signal.json; returns None if unavailable or NEUTRAL."""
+    if not RL_SIGNAL_PATH.exists():
+        return None
+    try:
+        raw = json.loads(RL_SIGNAL_PATH.read_text())
+        sig = str(raw.get("signal", "NEUTRAL")).upper()
+        conf = float(raw.get("confidence", 0.0))
+        probs = raw.get("probabilities", {})
+        buy_prob  = float(probs.get("BUY",  0.0))
+        sell_prob = float(probs.get("SELL", 0.0))
+        # Directional score in [-1, 1]: BUY pushes positive, SELL pushes negative
+        if sig == "BUY":
+            rl_score = buy_prob - 0.5
+        elif sig == "SELL":
+            rl_score = -(sell_prob - 0.5)
+        else:
+            rl_score = 0.0
+        return {"signal": sig, "confidence": conf, "rl_score": rl_score, "probabilities": probs}
+    except Exception as exc:
+        print(f"  [fusion] WARNING: failed to parse last_rl_signal.json: {exc}")
+        return None
+
+
 # ── main ─────────────────────────────────────────────────────────────────────
 
 def main() -> int:
@@ -245,6 +295,7 @@ def main() -> int:
     cls_sig   = _load_classification_signal()
     spoof_sig = _load_spoofing_signal()
     sent_sig  = _load_sentiment_signal()
+    rl_sig    = _load_rl_signal()
     cls_ctx   = _load_classification_context()
 
     if cls_sig is None and spoof_sig is None and sent_sig is None:
@@ -264,6 +315,7 @@ def main() -> int:
     print(f"  classification : {'ok' if cls_sig   else 'missing'}")
     print(f"  spoofing       : {'ok' if spoof_sig else 'missing'}")
     print(f"  sentiment      : {'ok' if sent_sig  else 'missing'}")
+    print(f"  rl_signal      : {'ok (' + rl_sig['signal'] + ')' if rl_sig else 'missing'}")
 
     decision = _AGGREGATOR.fuse(
         classification_signal=cls_sig,
@@ -271,7 +323,29 @@ def main() -> int:
         sentiment_signal=sent_sig,
     )
 
+    # ── Blend RL signal into fused score ─────────────────────────────────────
+    # When RL model is trained: final = (1-WEIGHT_RL)*base + WEIGHT_RL*rl_score
+    # When RL model absent:     final = base  (existing behaviour unchanged)
+    base_fused_score = float(decision.fused_score)
+    if rl_sig is not None:
+        rl_score = float(rl_sig["rl_score"])
+        final_fused_score = np.clip(
+            (1.0 - WEIGHT_RL) * base_fused_score + WEIGHT_RL * rl_score,
+            -1.0, 1.0,
+        )
+        final_action = _AGGREGATOR._score_to_action(final_fused_score, decision.spoofing_confidence)
+    else:
+        final_fused_score = base_fused_score
+        final_action      = decision.action
+
     ts_str = decision.timestamp.isoformat() if hasattr(decision.timestamp, "isoformat") else str(decision.timestamp)
+
+    reasoning = dict(decision.reasoning)
+    if rl_sig:
+        reasoning["rl"] = (
+            f"PPO {rl_sig['signal']} (confidence={rl_sig['confidence']:.3f}, "
+            f"rl_score={rl_sig['rl_score']:+.3f})"
+        )
 
     payload: dict = {
         "status":                    "ok",
@@ -280,11 +354,11 @@ def main() -> int:
         "signal_timestamp":          ts_str,
         "latest_timestamp":          cls_ctx.get("latest_timestamp", ts_str),
         "latest_close":              cls_ctx.get("latest_close"),
-        "action":                    decision.action,
-        "signal":                    decision.action,
-        "fused_score":               float(decision.fused_score),
-        "decision_score":            float(decision.fused_score),
-        "confidence":                abs(float(decision.fused_score)),
+        "action":                    final_action,
+        "signal":                    final_action,
+        "fused_score":               float(final_fused_score),
+        "decision_score":            float(final_fused_score),
+        "confidence":                abs(float(final_fused_score)),
         "risk_level":                decision.risk_level,
         "alignment_score":           float(decision.alignment_score),
         "classification_confidence": float(decision.classification_confidence),
@@ -292,19 +366,22 @@ def main() -> int:
         "classification_probability_down": cls_ctx.get("classification_probability_down"),
         "spoofing_confidence":       float(decision.spoofing_confidence),
         "sentiment_relevance":       float(decision.sentiment_relevance),
-        "reason":                    " | ".join(str(v) for v in decision.reasoning.values()),
-        "reasoning":                 decision.reasoning,
+        "rl_signal":                 rl_sig["signal"] if rl_sig else None,
+        "rl_confidence":             rl_sig["confidence"] if rl_sig else None,
+        "confidence_gate":           CONFIDENCE_THRESHOLD,
+        "reason":                    " | ".join(str(v) for v in reasoning.values()),
+        "reasoning":                 reasoning,
     }
 
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(OUTPUT_PATH, "w") as f:
         json.dump(payload, f, indent=2)
 
-    print(f"\n  Action        : {decision.action}")
-    print(f"  Fused score   : {decision.fused_score:+.4f}")
+    print(f"\n  Action        : {final_action}")
+    print(f"  Fused score   : {final_fused_score:+.4f}  (base={base_fused_score:+.4f})")
     print(f"  Risk level    : {decision.risk_level}")
     print(f"  Alignment     : {decision.alignment_score:.3f}")
-    print(f"  Reasoning     : {decision.reasoning}")
+    print(f"  Reasoning     : {reasoning}")
     print(f"\n  Saved to      : {OUTPUT_PATH}")
     print("=" * 60)
     return 0

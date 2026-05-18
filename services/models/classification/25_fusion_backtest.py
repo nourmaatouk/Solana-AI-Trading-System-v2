@@ -31,6 +31,8 @@ import xgboost as xgb
 from config import (
     ACTIVE_HORIZON,
     CONFIDENCE_THRESHOLD,
+    FEE_RT,
+    SLIPPAGE_PCT,
     LEAKAGE_SUBSTRINGS,
     MIN_POSITION_SIZE,
     MODEL_DIR,
@@ -44,7 +46,6 @@ from config import (
 )
 
 HORIZON      = ACTIVE_HORIZON
-FEE_RT       = 0.001
 GATE         = CONFIDENCE_THRESHOLD
 RESULTS_PATH = MODEL_DIR / "fusion_backtest_results.json"
 INPUT_PATH   = PROCESSED_DIR / ORDERBOOK_CSV
@@ -169,7 +170,7 @@ def _simulate_trades(
             candle_in, direction, close_full, high_full, low_full, n_full
         )
         size    = _position_size(prob, direction) if use_sizing else 1.0
-        net_pnl = (gross - FEE_RT) * size
+        net_pnl = (gross - FEE_RT - SLIPPAGE_PCT) * size
 
         trades.append({
             "candle_in":   int(candle_in),

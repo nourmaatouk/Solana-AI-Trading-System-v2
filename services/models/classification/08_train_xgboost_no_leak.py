@@ -1,6 +1,10 @@
 """
 08_train_xgboost_no_leak.py
-Train XGBoost classifiers for H4 / H8 / H16 horizons.
+Train XGBoost classifiers for the horizons defined in config.HORIZONS.
+
+Only H4 (1-hour horizon) is active in production. H8 (AUC 0.577) and H16
+(AUC 0.538) were evaluated and dropped — both are too close to random baseline
+to provide a reliable trading edge.
 
 Prerequisites: run 07_prepare_no_leak_data.py first to generate the .npy splits.
 """

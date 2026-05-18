@@ -5,6 +5,7 @@ Every hard-coded value that was previously scattered across scripts now lives
 here.  Scripts import what they need; nothing is duplicated.
 """
 
+import os
 from pathlib import Path
 
 # ── Directory layout ──────────────────────────────────────────────────────────
@@ -19,9 +20,9 @@ PLOTS_DIR      = CLASSIFICATION_DIR / "plots"
 REPORTS_DIR    = CLASSIFICATION_DIR / "reports"
 
 # ── Data collection ───────────────────────────────────────────────────────────
-EXCHANGE            = "binance"
-SYMBOL              = "SOL/USDT"
-BTC_SYMBOL          = "BTC/USDT"
+EXCHANGE            = os.environ.get("EXCHANGE", "binance")
+SYMBOL              = os.environ.get("ACTIVE_SYMBOL",  "SOL/USDT")
+BTC_SYMBOL          = os.environ.get("BTC_SYMBOL",     "BTC/USDT")
 TIMEFRAME           = "15m"
 CANDLE_LIMIT_HISTORY  = 500   # max bars per Binance API call (historical download)
 CANDLE_LIMIT_REALTIME = 200   # bars fetched in realtime (enough for all indicators)
@@ -35,8 +36,8 @@ SENTIMENT_CSV      = "sol_usdt_15m_features_h4_with_sentiment.csv"
 ORDERBOOK_CSV      = "sol_usdt_15m_features_h4_with_sentiment_orderbook.csv"
 
 # ── Triple-barrier labeling ───────────────────────────────────────────────────
-TAKE_PROFIT_PCT = 0.020   # +2.0 % take-profit barrier
-STOP_LOSS_PCT   = 0.015   # −1.5 % stop-loss barrier
+TAKE_PROFIT_PCT = float(os.environ.get("TAKE_PROFIT_PCT", "0.020"))   # +2.0 % take-profit barrier
+STOP_LOSS_PCT   = float(os.environ.get("STOP_LOSS_PCT",   "0.015"))   # −1.5 % stop-loss barrier
 
 # ── Chronological train / val / test split ────────────────────────────────────
 TRAIN_RATIO = 0.70
@@ -46,8 +47,10 @@ TEST_RATIO  = 0.15
 assert abs(TRAIN_RATIO + VAL_RATIO + TEST_RATIO - 1.0) < 1e-9, "Ratios must sum to 1."
 
 # ── Prediction horizons (number of 15-min candles ahead) ─────────────────────
-HORIZONS       = [4, 8, 16]   # H4 = 1 h, H8 = 2 h, H16 = 4 h
-ACTIVE_HORIZON = 4            # horizon used in realtime inference
+# H8 (AUC 0.577) and H16 (AUC 0.538) were evaluated and dropped — both are
+# too close to random to be useful in production. Only H4 (AUC 0.62) is kept.
+HORIZONS       = [4]
+ACTIVE_HORIZON = 4
 
 # ── Non-stationary columns — MUST be excluded from XGBoost features ──────────
 # These are absolute price levels; they contain regime information and will
@@ -121,10 +124,33 @@ XGB_SEED                 = 42
 # P(up) >= CONFIDENCE_THRESHOLD          → UP   signal
 # P(up) <= 1 − CONFIDENCE_THRESHOLD      → DOWN signal
 # otherwise                              → NEUTRAL (no trade)
-CONFIDENCE_THRESHOLD = 0.69
+CONFIDENCE_THRESHOLD = float(os.environ.get("CONFIDENCE_THRESHOLD", "0.69"))
 
 # ── Paper-trader risk management ──────────────────────────────────────────────
 # Position size scales linearly from MIN_POSITION_SIZE (at the gate boundary)
 # to 1.0 (at maximum confidence).  This mirrors fractional Kelly sizing without
 # requiring a full Kelly calculation.
 MIN_POSITION_SIZE = 0.25   # minimum fraction of equity deployed per trade
+
+# How long a spoofing score is considered fresh. Older scores are ignored so a
+# stale "suspicious" flag cannot block new entries indefinitely.
+SPOOFING_MAX_AGE_MIN = 30
+
+# Scheduler daemon
+SCHEDULER_INTERVAL_SECONDS = 900   # 15 minutes between pipeline runs
+PIPELINE_TIMEOUT_SECONDS   = 120   # kill a hanging pipeline run after this
+
+# Paper-trading history ring buffer
+HISTORY_MAX_ENTRIES = 200
+
+# Signals older than this are flagged as stale in the API and dashboard
+SIGNAL_STALE_MINUTES = 20
+
+# ── Trading costs ─────────────────────────────────────────────────────────────
+FEE_RT        = 0.001    # round-trip fee (entry + exit) as a fraction of notional
+SLIPPAGE_PCT  = 0.0005   # additional round-trip market-impact estimate (5 bps)
+
+# ── Fusion predictor ──────────────────────────────────────────────────────────
+# Maximum absolute contribution of the sentiment score to the fused signal.
+# Caps FinBERT's influence so it can nudge but not override the XGBoost signal.
+SENTIMENT_CAP = 0.04

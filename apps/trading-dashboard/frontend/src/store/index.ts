@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { TickerData, KlineData, TradeData, DepthData, WatchlistItem, AISignalData } from '../types';
+import { ACTIVE_SYMBOL, ACTIVE_TIMEFRAME } from '../config';
 
 interface TradingStore {
   // Market data
@@ -15,6 +16,14 @@ interface TradingStore {
 
   // AI
   signal: AISignalData | null;
+
+  // Theme
+  theme: 'dark' | 'light';
+  toggleTheme: () => void;
+
+  // Alerts
+  alertsEnabled: boolean;
+  toggleAlerts: () => void;
 
   // Actions
   setTicker: (t: TickerData) => void;
@@ -38,9 +47,25 @@ export const useTradingStore = create<TradingStore>((set) => ({
   watchlist: [],
   connectionStatus: 'reconnecting',
   exchange: 'binance',
-  selectedSymbol: 'SOLUSDT',
-  selectedInterval: '15m',
+  selectedSymbol: ACTIVE_SYMBOL,
+  selectedInterval: ACTIVE_TIMEFRAME,
   signal: null,
+  theme: (localStorage.getItem('theme') as 'dark' | 'light') ?? 'dark',
+  toggleTheme: () =>
+    set((state) => {
+      const next = state.theme === 'dark' ? 'light' : 'dark';
+      localStorage.setItem('theme', next);
+      document.documentElement.setAttribute('data-theme', next);
+      return { theme: next };
+    }),
+
+  alertsEnabled: localStorage.getItem('alertsEnabled') !== 'false',
+  toggleAlerts: () =>
+    set((state) => {
+      const next = !state.alertsEnabled;
+      localStorage.setItem('alertsEnabled', String(next));
+      return { alertsEnabled: next };
+    }),
 
   setTicker: (t) => set({ ticker: t }),
 

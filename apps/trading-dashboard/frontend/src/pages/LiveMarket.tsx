@@ -9,50 +9,37 @@ import { TradingControls } from '../components/TradingControls';
 
 export function LiveMarket() {
   return (
-    <div className="flex flex-col h-full min-h-0 bg-white">
-      {/* Top: market ticker bar */}
+    <div className="flex flex-col h-full min-h-0" style={{ background: 'var(--bg-page)' }}>
       <MarketHeader />
 
-      {/* Main trading area */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
-
-        {/* Centre column: chart + bottom panels */}
         <div className="flex flex-col flex-1 min-w-0">
 
-          {/* Chart + right panels row */}
           <div className="flex flex-1 min-h-0">
-
-            {/* Candlestick chart */}
             <div className="flex-1 min-w-0">
               <PriceChart />
             </div>
 
-            {/* Right column: order book stacked over AI signal */}
-            <div className="flex flex-col border-l border-gray-200" style={{ width: 220 }}>
+            <div className="flex flex-col" style={{ width: 220, borderLeft: '1px solid var(--border)' }}>
               <div className="flex-1 min-h-0 overflow-hidden">
                 <OrderBook />
               </div>
             </div>
 
-            {/* Far-right column: AI signal */}
-            <div className="flex flex-col border-l border-gray-200" style={{ width: 220 }}>
+            <div className="flex flex-col" style={{ width: 220, borderLeft: '1px solid var(--border)' }}>
               <AISignalPanel />
             </div>
           </div>
 
-          {/* Bottom strip: trades | spoofing | watchlist */}
-          <div className="flex border-t border-gray-200 flex-shrink-0" style={{ height: 280 }}>
-            {/* Recent trades */}
-            <div className="flex flex-col border-r border-gray-200 overflow-hidden" style={{ width: '38%' }}>
+          <div className="flex flex-shrink-0" style={{ height: 280, borderTop: '1px solid var(--border)' }}>
+            <div className="flex flex-col overflow-hidden" style={{ width: '38%', borderRight: '1px solid var(--border)' }}>
               <RecentTrades />
             </div>
 
-            {/* Spoofing detection */}
-            <div className="flex flex-col border-r border-gray-200 overflow-hidden" style={{ width: '31%' }}>
+            <div className="flex flex-col overflow-hidden" style={{ width: '31%', borderRight: '1px solid var(--border)' }}>
               <SpoofingPanel />
             </div>
 
-            {/* Watchlist */}
             <div className="flex flex-col overflow-hidden" style={{ width: '31%' }}>
               <Watchlist />
             </div>
@@ -60,7 +47,6 @@ export function LiveMarket() {
         </div>
       </div>
 
-      {/* Bottom: trading controls */}
       <TradingControls />
     </div>
   );

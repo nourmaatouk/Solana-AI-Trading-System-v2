@@ -1,5 +1,7 @@
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
 import { useMarketSocket } from './hooks/useMarketSocket';
+import { useTradingStore } from './store';
 import { Dashboard } from './pages/Dashboard';
 import { LiveMarket } from './pages/LiveMarket';
 import { WhySignal } from './pages/WhySignal';
@@ -17,9 +19,15 @@ function AppLayout() {
   useMarketSocket();
   const { pathname } = useLocation();
   const isMarket = pathname === '/market';
+  const theme = useTradingStore((s) => s.theme);
+
+  // Keep data-theme in sync with store (also applied on toggle; this covers initial load)
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+  }, [theme]);
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: '#f8f9fd' }}>
+    <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg-page)' }}>
       <Sidebar />
 
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">

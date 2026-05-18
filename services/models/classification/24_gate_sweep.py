@@ -23,6 +23,7 @@ from pathlib import Path
 from config import (
     ACTIVE_HORIZON,
     CONFIDENCE_THRESHOLD,
+    FEE_RT,
     LEAKAGE_SUBSTRINGS,
     MODEL_DIR,
     NON_STATIONARY_COLUMNS,
@@ -46,7 +47,6 @@ INPUT_PATH   = PROCESSED_DIR / ORDERBOOK_CSV
 
 N_FOLDS       = 5
 HORIZON       = ACTIVE_HORIZON
-FEE_RT        = 0.001
 SWEEP         = np.round(np.arange(0.55, 0.76, 0.01), 2)
 MIN_TRADES    = 30   # minimum trades required to be considered viable
 

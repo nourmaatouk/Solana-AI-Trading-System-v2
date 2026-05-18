@@ -1,8 +1,9 @@
 import type { AISignalData } from '../types';
+import { API_TIMEOUT_GET_MS, API_TIMEOUT_POST_MS } from '../config';
 
 const BASE = '/api';
 
-async function get<T>(path: string, timeoutMs = 8000): Promise<T> {
+async function get<T>(path: string, timeoutMs = API_TIMEOUT_GET_MS): Promise<T> {
   const res = await fetch(`${BASE}${path}`, { signal: AbortSignal.timeout(timeoutMs) });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText })) as { error?: string };
@@ -11,7 +12,7 @@ async function get<T>(path: string, timeoutMs = 8000): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-async function post<T>(path: string, body?: unknown, timeoutMs = 12000): Promise<T> {
+async function post<T>(path: string, body?: unknown, timeoutMs = API_TIMEOUT_POST_MS): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -69,3 +70,18 @@ export const fetchWalkForward = (): Promise<Record<string, unknown>> =>
 
 export const resumeScheduler = (): Promise<Record<string, unknown>> =>
   post('/ai/resume');
+
+export const fetchAccuracy = (): Promise<Record<string, unknown>> =>
+  get('/ai/accuracy');
+
+export const fetchDrift = (): Promise<Record<string, unknown>> =>
+  get('/ai/drift');
+
+export const fetchRetrainStatus = (): Promise<Record<string, unknown>> =>
+  get('/ai/retrain/status');
+
+export const triggerRetrain = (): Promise<Record<string, unknown>> =>
+  post('/ai/retrain/trigger');
+
+export const fetchRLSignal = (): Promise<Record<string, unknown>> =>
+  get('/ai/rl-signal');

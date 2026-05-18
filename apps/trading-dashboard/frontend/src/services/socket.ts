@@ -1,16 +1,16 @@
+import { WS_RECONNECT_BASE_MS, WS_RECONNECT_MAX_MS } from '../config';
+
 type MessageHandler = (data: unknown) => void;
 
 // Use the same host as the page so the Vite proxy (/ws) handles the upgrade in dev,
 // and the production reverse-proxy handles it in prod — no hardcoded port needed.
 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 const WS_URL = `${protocol}//${window.location.host}/ws`;
-const RECONNECT_BASE_MS = 1000;
-const RECONNECT_MAX_MS = 30000;
 
 class SocketService {
   private ws: WebSocket | null = null;
   private handlers: Map<string, Set<MessageHandler>> = new Map();
-  private reconnectDelay = RECONNECT_BASE_MS;
+  private reconnectDelay = WS_RECONNECT_BASE_MS;
   private destroyed = false;
 
   connect(): void {
@@ -21,7 +21,7 @@ class SocketService {
 
       this.ws.onopen = () => {
         console.log('[socket] Connected to backend WS');
-        this.reconnectDelay = RECONNECT_BASE_MS;
+        this.reconnectDelay = WS_RECONNECT_BASE_MS;
       };
 
       this.ws.onmessage = (event) => {
@@ -58,7 +58,7 @@ class SocketService {
       if (!this.destroyed) {
         console.log(`[socket] Reconnecting in ${this.reconnectDelay}ms...`);
         this.connect();
-        this.reconnectDelay = Math.min(this.reconnectDelay * 2, RECONNECT_MAX_MS);
+        this.reconnectDelay = Math.min(this.reconnectDelay * 2, WS_RECONNECT_MAX_MS);
       }
     }, this.reconnectDelay);
   }

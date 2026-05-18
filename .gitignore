@@ -42,14 +42,25 @@ node_modules/
 *.ckpt
 *.pkl
 *.joblib
+*.npz
+*.zip
+
+# Trained model artifacts and generated result JSON files (all reproducible)
+services/models/models/
 
 # Data files — processed outputs and raw downloads (large, reproducible)
 **/data/raw/
 **/data/processed/
 **/data/logs/
+**/data/realtime/
+**/data/cache/
+services/models/nlp/data/
 *.parquet
 *.h5
 *.hdf5
+
+# Generated plots (reproducible by re-running training scripts)
+**/plots/
 
 # Reports and generated HTML (reproducible via scripts)
 **/reports/*.html

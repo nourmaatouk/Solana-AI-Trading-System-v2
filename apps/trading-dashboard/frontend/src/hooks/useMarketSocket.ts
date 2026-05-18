@@ -48,7 +48,8 @@ export function useMarketSocket(): void {
 
     const onTradesSnapshot = (raw: unknown) => {
       const msg = raw as TradesSnapshotMsg;
-      useTradingStore.getState().setTrades(msg.data);
+      const { selectedSymbol: sym, setTrades } = useTradingStore.getState();
+      if (msg.symbol === sym) setTrades(msg.data);
     };
 
     const onDepth = (raw: unknown) => {

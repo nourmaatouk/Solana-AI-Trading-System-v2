@@ -31,11 +31,13 @@ from sklearn.preprocessing import StandardScaler
 from config import (
     ACTIVE_HORIZON,
     CONFIDENCE_THRESHOLD,
+    FEE_RT,
     LEAKAGE_SUBSTRINGS,
     MODEL_DIR,
     NON_STATIONARY_COLUMNS,
     ORDERBOOK_CSV,
     PROCESSED_DIR,
+    SLIPPAGE_PCT,
     STOP_LOSS_PCT,
     TAKE_PROFIT_PCT,
     VAL_RATIO,
@@ -52,7 +54,6 @@ INPUT_PATH = PROCESSED_DIR / ORDERBOOK_CSV
 
 N_FOLDS = 5
 HORIZON = ACTIVE_HORIZON
-FEE_RT  = 0.001
 
 
 def parse_args() -> argparse.Namespace:
@@ -88,7 +89,8 @@ def main() -> int:
     print("=" * 90)
     print(f"  Confidence gate : P(up) >= {gate} or <= {1-gate:.4g}")
     print(f"  Exit horizon    : {HORIZON} bars (= {HORIZON * 15} minutes)")
-    print(f"  Fee (round-trip): {FEE_RT*100:.1f}%")
+    print(f"  Fee (round-trip): {FEE_RT*100:.2f}%")
+    print(f"  Slippage est.   : {SLIPPAGE_PCT*100:.2f}%  (market-impact round-trip)")
     print(f"  Cooldown        : {HORIZON} bars between entries (no overlapping positions)")
     print()
 
@@ -222,11 +224,12 @@ def main() -> int:
             else:
                 continue
 
-            entry   = close_full[candle_in]
-            exit_   = close_full[candle_ex]
-            raw_ret = (exit_ - entry) / entry
-            pnl     = raw_ret if direction == "UP" else -raw_ret
-            net_pnl = pnl - FEE_RT
+            entry    = close_full[candle_in]
+            exit_    = close_full[candle_ex]
+            raw_ret  = (exit_ - entry) / entry
+            pnl      = raw_ret if direction == "UP" else -raw_ret
+            net_pnl  = pnl - FEE_RT
+            slip_pnl = pnl - FEE_RT - SLIPPAGE_PCT
 
             fold_trades.append({
                 "fold":      fold + 1,
@@ -238,6 +241,7 @@ def main() -> int:
                 "exit":      float(exit_),
                 "gross_pnl": float(pnl),
                 "net_pnl":   float(net_pnl),
+                "slip_pnl":  float(slip_pnl),
                 "won":       int(pnl > 0),
             })
             last_entry_candle = candle_in
@@ -251,12 +255,13 @@ def main() -> int:
 
         gross = np.array([t["gross_pnl"] for t in fold_trades])
         net   = np.array([t["net_pnl"]   for t in fold_trades])
+        slip  = np.array([t["slip_pnl"]  for t in fold_trades])
         wins  = sum(t["won"] for t in fold_trades)
         n_up  = sum(1 for t in fold_trades if t["direction"] == "UP")
         n_dn  = n - n_up
 
-        period_start = times_full[orig_idx[test_start]]
-        period_end   = times_full[orig_idx[min(test_end - 1, n_total - 1)]]
+        period_start   = times_full[orig_idx[test_start]]
+        period_end     = times_full[orig_idx[min(test_end - 1, n_total - 1)]]
         n_test_candles = orig_idx[min(test_end - 1, n_total - 1)] - orig_idx[test_start] + 1
 
         print(f"{'─' * 90}")
@@ -264,14 +269,13 @@ def main() -> int:
         print(f"  Signals   : {n:,}  (UP={n_up}  DOWN={n_dn})  "
               f"trade_rate={n/len(test_proba)*100:.1f}% of labeled rows")
         print(f"  Win rate  : {wins/n*100:.1f}%")
-        print(f"  Gross P&L : {gross.mean()*100:+.3f}% avg/trade  |  "
-              f"total={gross.sum()*100:+.2f}%")
-        print(f"  Net P&L   : {net.mean()*100:+.3f}% avg/trade   |  "
-              f"total={net.sum()*100:+.2f}%")
-        if gross.std() > 0:
+        print(f"  Gross P&L : {gross.mean()*100:+.3f}% avg/trade  |  total={gross.sum()*100:+.2f}%")
+        print(f"  Net P&L   : {net.mean()*100:+.3f}% avg/trade   |  total={net.sum()*100:+.2f}%")
+        print(f"  Slip P&L  : {slip.mean()*100:+.3f}% avg/trade   |  total={slip.sum()*100:+.2f}%  (fee+slippage)")
+        if slip.std() > 0:
             trades_per_year = n / (n_test_candles / (252 * 96))
-            sharpe = gross.mean() / gross.std() * np.sqrt(trades_per_year)
-            print(f"  Sharpe    : {sharpe:.2f}  (annualised by trade frequency)")
+            sharpe = slip.mean() / slip.std() * np.sqrt(trades_per_year)
+            print(f"  Sharpe    : {sharpe:.2f}  (slippage-adjusted, annualised by trade frequency)")
 
         fold_summaries.append({
             "fold":          fold + 1,
@@ -284,6 +288,8 @@ def main() -> int:
             "sum_gross_pnl": float(gross.sum()),
             "avg_net_pnl":   float(net.mean()),
             "sum_net_pnl":   float(net.sum()),
+            "avg_slip_pnl":  float(slip.mean()),
+            "sum_slip_pnl":  float(slip.sum()),
             "std_pnl":       float(gross.std()),
         })
 
@@ -301,15 +307,17 @@ def main() -> int:
     else:
         gross_all = np.array([t["gross_pnl"] for t in all_trades])
         net_all   = np.array([t["net_pnl"]   for t in all_trades])
+        slip_all  = np.array([t["slip_pnl"]  for t in all_trades])
         wins_all  = sum(t["won"] for t in all_trades)
         n_all     = len(all_trades)
         n_up_all  = sum(1 for t in all_trades if t["direction"] == "UP")
         n_dn_all  = n_all - n_up_all
 
-        equity      = np.cumprod(1 + net_all)
+        # Compounded equity on slippage-adjusted returns
+        equity       = np.cumprod(1 + slip_all)
         total_return = float(equity[-1] - 1) * 100
-        peak        = 1.0
-        max_dd_pct  = 0.0
+        peak         = 1.0
+        max_dd_pct   = 0.0
         for v in equity:
             if v > peak:
                 peak = v
@@ -318,12 +326,12 @@ def main() -> int:
                 max_dd_pct = dd
         max_dd_pct *= 100
 
-        # Sharpe by actual trade frequency over the test period (raw candles)
+        # Slippage-adjusted Sharpe by actual trade frequency over the test period
         sharpe = 0.0
-        if net_all.std() > 0:
+        if slip_all.std() > 0:
             test_candle_span = orig_idx[-1] - orig_idx[fold_size]
             trades_per_year  = n_all / (test_candle_span / (252 * 96))
-            sharpe = net_all.mean() / net_all.std() * np.sqrt(trades_per_year)
+            sharpe = slip_all.mean() / slip_all.std() * np.sqrt(trades_per_year)
 
         up_pnl = gross_all[[t["direction"] == "UP"  for t in all_trades]]
         dn_pnl = gross_all[[t["direction"] == "DOWN" for t in all_trades]]
@@ -336,11 +344,12 @@ def main() -> int:
         print(f"  Win rate DOWN   : {dn_wr*100:.1f}%")
         print()
         print(f"  Avg gross P&L / trade : {gross_all.mean()*100:+.3f}%")
-        print(f"  Avg net  P&L / trade  : {net_all.mean()*100:+.3f}%  (after {FEE_RT*100:.1f}% RT fee)")
+        print(f"  Avg net  P&L / trade  : {net_all.mean()*100:+.3f}%  (fee {FEE_RT*100:.2f}%)")
+        print(f"  Avg slip P&L / trade  : {slip_all.mean()*100:+.3f}%  (fee {FEE_RT*100:.2f}% + slippage {SLIPPAGE_PCT*100:.2f}%)")
         print(f"  Total gross return    : {gross_all.sum()*100:+.2f}%  (sum of per-trade returns)")
-        print(f"  Compounded net return : {total_return:+.2f}%")
-        print(f"  Max drawdown          : {max_dd_pct:.2f}%")
-        print(f"  Sharpe ratio          : {sharpe:.2f}")
+        print(f"  Compounded slip return: {total_return:+.2f}%  (slippage-adjusted)")
+        print(f"  Max drawdown          : {max_dd_pct:.2f}%  (on slip-adjusted equity)")
+        print(f"  Sharpe ratio          : {sharpe:.2f}  (slippage-adjusted)")
         print()
 
         bah_start = orig_idx[fold_size]
@@ -352,15 +361,17 @@ def main() -> int:
         print(f"  Signal strategy gross return           : {gross_all.sum()*100:+.2f}%")
 
         print(f"\n  --- INTERPRETATION ---")
-        if net_all.mean() > FEE_RT:
-            print(f"  Avg net P&L {net_all.mean()*100:+.3f}% > fee {FEE_RT*100:.1f}% → "
-                  f"edge survives transaction costs.")
+        total_cost = FEE_RT + SLIPPAGE_PCT
+        if slip_all.mean() > 0:
+            print(f"  Avg slip P&L {slip_all.mean()*100:+.3f}% > 0 → "
+                  f"edge survives fee ({FEE_RT*100:.2f}%) + slippage ({SLIPPAGE_PCT*100:.2f}%).")
         elif net_all.mean() > 0:
-            print(f"  Avg net P&L positive but thin ({net_all.mean()*100:+.3f}%) — "
-                  f"real-world slippage likely erases it.")
+            print(f"  Net P&L positive but slippage erases it "
+                  f"({net_all.mean()*100:+.3f}% net, {slip_all.mean()*100:+.3f}% after slip). "
+                  f"Reduce position frequency or target tighter entries.")
         else:
-            print(f"  Avg net P&L {net_all.mean()*100:+.3f}% → "
-                  f"edge does NOT survive transaction costs.")
+            print(f"  Avg slip P&L {slip_all.mean()*100:+.3f}% — "
+                  f"edge does NOT survive total cost ({total_cost*100:.2f}%).")
 
         if sharpe > 1.0:
             print(f"  Sharpe {sharpe:.2f} > 1.0 → respectable risk-adjusted return.")
@@ -370,25 +381,27 @@ def main() -> int:
             print(f"  Sharpe {sharpe:.2f}: poor risk-adjusted return.")
 
         results = {
-            "confidence_gate":        gate,
-            "fee_roundtrip":          FEE_RT,
-            "horizon_bars":           HORIZON,
-            "cooldown_bars":          HORIZON,
-            "n_folds":                N_FOLDS,
-            "n_total_trades":         n_all,
-            "n_up_signals":           n_up_all,
-            "n_dn_signals":           n_dn_all,
-            "win_rate":               float(wins_all / n_all),
-            "win_rate_up":            up_wr,
-            "win_rate_dn":            dn_wr,
-            "avg_gross_pnl":          float(gross_all.mean()),
-            "avg_net_pnl":            float(net_all.mean()),
-            "sum_gross_pnl":          float(gross_all.sum()),
-            "compounded_net_return":  float(equity[-1] - 1),
-            "max_drawdown":           float(max_dd_pct / 100),
-            "sharpe":                 float(sharpe),
-            "buy_and_hold_pct":       bah_ret,
-            "fold_summaries":         fold_summaries,
+            "confidence_gate":             gate,
+            "fee_roundtrip":               FEE_RT,
+            "slippage_roundtrip":          SLIPPAGE_PCT,
+            "horizon_bars":                HORIZON,
+            "cooldown_bars":               HORIZON,
+            "n_folds":                     N_FOLDS,
+            "n_total_trades":              n_all,
+            "n_up_signals":                n_up_all,
+            "n_dn_signals":                n_dn_all,
+            "win_rate":                    float(wins_all / n_all),
+            "win_rate_up":                 up_wr,
+            "win_rate_dn":                 dn_wr,
+            "avg_gross_pnl":               float(gross_all.mean()),
+            "avg_net_pnl":                 float(net_all.mean()),
+            "avg_slip_pnl":                float(slip_all.mean()),
+            "sum_gross_pnl":               float(gross_all.sum()),
+            "compounded_net_return":       float(equity[-1] - 1),
+            "max_drawdown":                float(max_dd_pct / 100),
+            "sharpe":                      float(sharpe),
+            "buy_and_hold_pct":            bah_ret,
+            "fold_summaries":              fold_summaries,
         }
 
         results_path.parent.mkdir(parents=True, exist_ok=True)

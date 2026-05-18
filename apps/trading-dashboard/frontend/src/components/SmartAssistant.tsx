@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTradingStore } from '../store';
 import { fetchScheduler } from '../services/api';
+import { DASHBOARD_POLL_INTERVAL_MS } from '../config';
 
 interface SmartAssistantProps {
   winRate: number | null;
@@ -51,7 +52,7 @@ export function SmartAssistant({ winRate, activeSignals, loading, fusedScore }: 
       } catch { /* keep previous values */ }
     };
     load();
-    const interval = setInterval(load, 30_000);
+    const interval = setInterval(load, DASHBOARD_POLL_INTERVAL_MS);
     return () => clearInterval(interval);
   }, []);
 
@@ -74,7 +75,7 @@ export function SmartAssistant({ winRate, activeSignals, loading, fusedScore }: 
   return (
     <div
       className="rounded-xl p-6 text-white relative overflow-hidden"
-      style={{ background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)' }}
+      style={{ background: 'linear-gradient(135deg, #6D28D9 0%, #14B8A6 100%)' }}
     >
       {/* Decorative circles */}
       <div className="absolute -top-8 -right-8 w-40 h-40 rounded-full bg-white opacity-5 pointer-events-none" />

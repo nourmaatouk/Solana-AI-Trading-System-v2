@@ -6,7 +6,6 @@ interface Settings {
   signalPollInterval: number;
   showSpoofingAlerts: boolean;
   priceDisplayDecimals: number;
-  theme: 'light';
 }
 
 const DEFAULTS: Settings = {
@@ -15,7 +14,6 @@ const DEFAULTS: Settings = {
   signalPollInterval: 60,
   showSpoofingAlerts: true,
   priceDisplayDecimals: 2,
-  theme: 'light',
 };
 
 const STORAGE_KEY = 'solvanta_settings';
@@ -30,8 +28,8 @@ function loadSettings(): Settings {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5">
-      <div className="font-semibold text-gray-800 text-sm mb-4">{title}</div>
+    <div className="rounded-xl p-5" style={{ background: 'var(--bg-panel)', border: '1px solid var(--border)' }}>
+      <div className="font-semibold text-sm mb-4" style={{ color: 'var(--text-1)' }}>{title}</div>
       <div className="space-y-4">{children}</div>
     </div>
   );
@@ -41,8 +39,8 @@ function Row({ label, desc, children }: { label: string; desc?: string; children
   return (
     <div className="flex items-center justify-between gap-4">
       <div>
-        <div className="text-sm text-gray-700">{label}</div>
-        {desc && <div className="text-xs text-gray-400 mt-0.5">{desc}</div>}
+        <div className="text-sm" style={{ color: 'var(--text-1)' }}>{label}</div>
+        {desc && <div className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>{desc}</div>}
       </div>
       <div className="flex-shrink-0">{children}</div>
     </div>
@@ -53,32 +51,42 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
   return (
     <button
       onClick={() => onChange(!value)}
-      className={`w-10 h-5 rounded-full transition-colors ${value ? 'bg-indigo-500' : 'bg-gray-200'}`}
+      className="w-10 h-5 rounded-full transition-colors"
+      style={{ background: value ? 'var(--accent)' : 'var(--border)' }}
     >
-      <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform mx-0.5 ${value ? 'translate-x-5' : 'translate-x-0'}`} />
+      <div className={`w-4 h-4 rounded-full shadow transition-transform mx-0.5 ${value ? 'translate-x-5' : 'translate-x-0'}`}
+        style={{ background: 'var(--bg-panel)' }} />
     </button>
   );
 }
 
 function Pills<T extends string>({ options, value, onChange, colorFn }: {
-  options: T[];
+  options: readonly T[];
   value: T;
   onChange: (v: T) => void;
-  colorFn?: (v: T) => string;
+  colorFn?: (v: T) => { color: string; bg: string; border: string };
 }) {
   return (
     <div className="flex gap-1.5">
-      {options.map((o) => (
-        <button
-          key={o}
-          onClick={() => onChange(o)}
-          className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors border ${
-            value === o ? (colorFn?.(o) ?? 'bg-indigo-50 text-indigo-600 border-indigo-200') : 'text-gray-500 border-gray-200 hover:bg-gray-50'
-          }`}
-        >
-          {o}
-        </button>
-      ))}
+      {options.map((o) => {
+        const active = value === o;
+        const custom = active ? colorFn?.(o) : undefined;
+        return (
+          <button
+            key={o}
+            onClick={() => onChange(o)}
+            className="px-2.5 py-1 rounded-lg text-xs font-medium transition-colors border"
+            style={active
+              ? custom
+                ? { color: custom.color, background: custom.bg, borderColor: custom.border }
+                : { color: 'var(--accent)', background: 'var(--accent-bg)', borderColor: 'var(--accent-bd)' }
+              : { color: 'var(--text-2)', borderColor: 'var(--border)', background: 'transparent' }
+            }
+          >
+            {o}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -105,18 +113,22 @@ export function SettingsPage() {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-6" style={{ background: '#f8f9fd' }}>
+    <div className="flex-1 overflow-y-auto p-6" style={{ background: 'var(--bg-page)' }}>
       <div className="max-w-xl mx-auto space-y-4">
         <div className="flex items-start justify-between">
           <div>
-            <h1 className="text-xl font-bold text-gray-800 mb-1">Settings</h1>
-            <p className="text-gray-400 text-sm">Preferences saved to your browser.</p>
+            <h1 className="text-xl font-bold mb-1" style={{ color: 'var(--text-1)' }}>Settings</h1>
+            <p className="text-sm" style={{ color: 'var(--text-3)' }}>Preferences saved to your browser.</p>
           </div>
           <div className="flex gap-2">
-            <button onClick={handleReset} className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-100 transition-colors">
+            <button onClick={handleReset}
+              className="px-3 py-1.5 text-xs rounded-lg border transition-colors"
+              style={{ borderColor: 'var(--border)', color: 'var(--text-2)', background: 'transparent' }}>
               Reset
             </button>
-            <button onClick={handleSave} className={`px-4 py-1.5 text-xs rounded-lg font-medium transition-colors ${saved ? 'bg-green-500 text-white' : 'bg-indigo-500 hover:bg-indigo-600 text-white'}`}>
+            <button onClick={handleSave}
+              className="px-4 py-1.5 text-xs rounded-lg font-medium transition-colors text-white"
+              style={{ background: saved ? '#16a34a' : 'var(--accent)' }}>
               {saved ? '✓ Saved' : 'Save'}
             </button>
           </div>
@@ -128,7 +140,11 @@ export function SettingsPage() {
               options={['LOW', 'MEDIUM', 'HIGH'] as const}
               value={settings.riskLevel}
               onChange={(v) => update('riskLevel', v)}
-              colorFn={(v) => v === 'LOW' ? 'bg-green-50 text-green-600 border-green-200' : v === 'MEDIUM' ? 'bg-yellow-50 text-yellow-600 border-yellow-200' : 'bg-red-50 text-red-500 border-red-200'}
+              colorFn={(v) =>
+                v === 'LOW'    ? { color: 'var(--green)',  bg: 'var(--green-bg)',  border: 'var(--green-bd)'  }
+                : v === 'MEDIUM' ? { color: 'var(--accent)', bg: 'var(--accent-bg)', border: 'var(--accent-bd)' }
+                :                  { color: 'var(--red)',    bg: 'var(--red-bg)',    border: 'var(--red-bd)'    }
+              }
             />
           </Row>
           <Row label="Default Trading Mode" desc="Manual requires you to confirm every trade">
@@ -145,7 +161,8 @@ export function SettingsPage() {
             <select
               value={settings.signalPollInterval}
               onChange={(e) => update('signalPollInterval', Number(e.target.value))}
-              className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              className="rounded-lg px-3 py-1.5 text-sm border focus:outline-none"
+              style={{ background: 'var(--bg-sub)', color: 'var(--text-1)', borderColor: 'var(--border)' }}
             >
               <option value={10}>10 seconds</option>
               <option value={30}>30 seconds</option>
@@ -163,7 +180,8 @@ export function SettingsPage() {
             <select
               value={settings.priceDisplayDecimals}
               onChange={(e) => update('priceDisplayDecimals', Number(e.target.value))}
-              className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              className="rounded-lg px-3 py-1.5 text-sm border focus:outline-none"
+              style={{ background: 'var(--bg-sub)', color: 'var(--text-1)', borderColor: 'var(--border)' }}
             >
               <option value={2}>2 decimals ($163.45)</option>
               <option value={4}>4 decimals ($163.4521)</option>
@@ -172,16 +190,23 @@ export function SettingsPage() {
         </Section>
 
         <Section title="About">
-          <div className="text-xs text-gray-500 space-y-1.5">
-            <div className="flex justify-between"><span>System</span><span className="font-mono">Solvanta AI Trading Dashboard</span></div>
-            <div className="flex justify-between"><span>Stack</span><span className="font-mono">React · Node.js · FastAPI · XGBoost</span></div>
-            <div className="flex justify-between"><span>Data source</span><span className="font-mono">Binance WebSocket</span></div>
-            <div className="flex justify-between"><span>AI models</span><span className="font-mono">XGBoost + FinBERT + TEN-GNN</span></div>
-            <div className="flex justify-between"><span>Execution</span><span className="font-mono text-amber-600">Paper trading only</span></div>
+          <div className="text-xs space-y-1.5" style={{ color: 'var(--text-2)' }}>
+            {[
+              ['System',      'Solvanta AI Trading Dashboard'],
+              ['Stack',       'React · Node.js · FastAPI · XGBoost'],
+              ['Data source', 'Binance WebSocket'],
+              ['AI models',   'XGBoost + FinBERT + TEN-GNN'],
+              ['Execution',   'Paper trading only'],
+            ].map(([name, value]) => (
+              <div key={name} className="flex justify-between">
+                <span style={{ color: 'var(--text-3)' }}>{name}</span>
+                <span className="font-mono" style={{ color: name === 'Execution' ? 'var(--accent)' : 'var(--text-1)' }}>{value}</span>
+              </div>
+            ))}
           </div>
         </Section>
 
-        <p className="text-xs text-gray-400 text-center">Settings are stored in localStorage and apply on next page load.</p>
+        <p className="text-xs text-center" style={{ color: 'var(--text-3)' }}>Settings are stored in localStorage and apply on next page load.</p>
       </div>
     </div>
   );
