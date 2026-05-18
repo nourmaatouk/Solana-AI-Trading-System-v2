@@ -38,9 +38,19 @@ SELL_THRESHOLD          = _fusion_cfg.SELL_THRESHOLD
 SPOOFING_HOLD_THRESHOLD = _fusion_cfg.SPOOFING_HOLD_THRESHOLD
 RISK_HIGH_THRESHOLD     = _fusion_cfg.RISK_HIGH_THRESHOLD
 RISK_MEDIUM_THRESHOLD   = _fusion_cfg.RISK_MEDIUM_THRESHOLD
-ALIGNMENT_STRONG_AGREE     = _fusion_cfg.ALIGNMENT_STRONG_AGREE
-ALIGNMENT_STRONG_DISAGREE  = _fusion_cfg.ALIGNMENT_STRONG_DISAGREE
-ALIGNMENT_NEUTRAL          = _fusion_cfg.ALIGNMENT_NEUTRAL
+ALIGNMENT_STRONG_AGREE      = _fusion_cfg.ALIGNMENT_STRONG_AGREE
+ALIGNMENT_STRONG_DISAGREE   = _fusion_cfg.ALIGNMENT_STRONG_DISAGREE
+ALIGNMENT_NEUTRAL           = _fusion_cfg.ALIGNMENT_NEUTRAL
+ALIGNMENT_SIGNAL_THRESHOLD    = _fusion_cfg.ALIGNMENT_SIGNAL_THRESHOLD
+SPOOFING_SEVERITY_HIGH        = _fusion_cfg.SPOOFING_SEVERITY_HIGH
+SPOOFING_SEVERITY_MEDIUM      = _fusion_cfg.SPOOFING_SEVERITY_MEDIUM
+SENTIMENT_POSITIVE_THRESHOLD  = _fusion_cfg.SENTIMENT_POSITIVE_THRESHOLD
+SENTIMENT_NEGATIVE_THRESHOLD  = _fusion_cfg.SENTIMENT_NEGATIVE_THRESHOLD
+GNN_STRESS_PENALTY            = _fusion_cfg.GNN_STRESS_PENALTY
+HIGH_IMPACT_RELEVANCE_BOOST   = _fusion_cfg.HIGH_IMPACT_RELEVANCE_BOOST
+RISK_WEIGHT_SPOOFING          = _fusion_cfg.RISK_WEIGHT_SPOOFING
+RISK_WEIGHT_GNN               = _fusion_cfg.RISK_WEIGHT_GNN
+RISK_WEIGHT_SENTIMENT_PENALTY = _fusion_cfg.RISK_WEIGHT_SENTIMENT_PENALTY
 
 
 class FusionAggregator:
@@ -146,7 +156,7 @@ class FusionAggregator:
             sentiment_rel = sentiment_signal.relevance_score
             
             if sentiment_signal.high_impact_event:
-                sentiment_rel = min(1.0, sentiment_rel + 0.2)  # boost relevance
+                sentiment_rel = min(1.0, sentiment_rel + HIGH_IMPACT_RELEVANCE_BOOST)
             
             reasoning["sentiment"] = (
                 f"FinBERT {sentiment_signal.sentiment_label} "
@@ -277,10 +287,13 @@ class FusionAggregator:
             try:
                 classification_score = 0.0
                 if pd.notna(row.get("prediction")):
+                    pred = float(row["prediction"])
                     if row.get("signal") == "BUY":
-                        classification_score = float(row["prediction"])
+                        classification_score = pred
                     elif row.get("signal") == "SELL":
-                        classification_score = -float(row["prediction"])
+                        # prediction column is prob_up; for SELL the directional
+                        # confidence is prob_down = 1 - prob_up, so negate that.
+                        classification_score = -(1.0 - pred)
                 
                 sentiment_score = float(row.get("sentiment_score", 0.0)) if pd.notna(row.get("sentiment_score")) else 0.0
                 sentiment_rel = float(row.get("relevance_score", 0.0)) if pd.notna(row.get("relevance_score")) else 0.0
@@ -336,7 +349,7 @@ class FusionAggregator:
             self.weight_classification * classification_score
             + self.weight_sentiment * (sentiment_score * sentiment_rel)
             + self.weight_spoofing * (-(spoofing_conf ** 2))  # spoofing reduces score
-            + self.weight_gnn * (-(gnn_conf * 0.5))  # mild network stress penalty
+            + self.weight_gnn * (-(gnn_conf * GNN_STRESS_PENALTY))
         )
         
         return np.clip(fused, -1.0, 1.0)
@@ -356,7 +369,11 @@ class FusionAggregator:
         self, spoofing_conf: float, gnn_conf: float, sentiment_rel: float
     ) -> str:
         """Compute risk level from combined risk factors."""
-        risk_score = (spoofing_conf * 0.4) + (gnn_conf * 0.3) + ((1 - sentiment_rel) * 0.3)
+        risk_score = (
+            spoofing_conf * RISK_WEIGHT_SPOOFING
+            + gnn_conf * RISK_WEIGHT_GNN
+            + (1 - sentiment_rel) * RISK_WEIGHT_SENTIMENT_PENALTY
+        )
         if risk_score > RISK_HIGH_THRESHOLD:
             return "HIGH"
         elif risk_score > RISK_MEDIUM_THRESHOLD:
@@ -368,8 +385,9 @@ class FusionAggregator:
         self, classification: float, sentiment: float, spoofing: float, gnn: float
     ) -> float:
         """Compute signal alignment score [0, 1]."""
-        classification_sign = 1 if classification > 0.1 else (-1 if classification < -0.1 else 0)
-        sentiment_sign = 1 if sentiment > 0.1 else (-1 if sentiment < -0.1 else 0)
+        t = ALIGNMENT_SIGNAL_THRESHOLD
+        classification_sign = 1 if classification > t else (-1 if classification < -t else 0)
+        sentiment_sign = 1 if sentiment > t else (-1 if sentiment < -t else 0)
         if classification_sign == 0 or sentiment_sign == 0:
             return ALIGNMENT_NEUTRAL
         if classification_sign == sentiment_sign:

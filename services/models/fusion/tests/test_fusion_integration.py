@@ -368,9 +368,9 @@ class TestFusionBatch:
             },
             {
                 "timestamp": ts_base + timedelta(hours=4),
-                "prediction": 0.60,
+                "prediction": 0.22,   # prob_up=0.22 → prob_down=0.78, genuine SELL
                 "signal": "SELL",
-                "confidence": 0.70,
+                "confidence": 0.78,
             },
         ])
         

@@ -5,8 +5,15 @@ Run it to see fused decisions flow through the system.
 """
 import asyncio
 import random
+import warnings
 from datetime import datetime, timedelta
 from pprint import pprint
+
+warnings.warn(
+    "run_streaming_demo.py uses random mock data and is NOT a production pipeline. "
+    "Do not run this file in live trading.",
+    stacklevel=1,
+)
 
 # Ensure imports from repository
 import sys
