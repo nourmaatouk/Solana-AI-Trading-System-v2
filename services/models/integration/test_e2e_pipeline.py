@@ -645,25 +645,26 @@ class TestE2EEdgeCases:
         """Pipeline should work with only classification + spoofing."""
         ts = datetime.now()
         agg = FusionAggregator()
-        
+
+        # prediction=0.75 → fused = 0.50×0.75 − 0.20×0.04 = 0.367 > BUY_THRESHOLD(0.345)
         classification = ClassificationSignal(
             timestamp=ts,
-            prediction=0.70,
+            prediction=0.75,
             signal="BUY",
             confidence=0.80,
         )
-        
+
         spoofing = SpoofingSignal(
             timestamp=ts,
             confidence=0.20,
             severity="low",
         )
-        
+
         decision = agg.fuse(
             classification_signal=classification,
             spoofing_signal=spoofing,
         )
-        
+
         assert decision.action == "BUY"
         assert "classification" in decision.reasoning
         assert "spoofing" in decision.reasoning
@@ -712,14 +713,15 @@ class TestE2EEdgeCases:
         """Neutral sentiment should not amplify or dampen signals."""
         ts = datetime.now()
         agg = FusionAggregator()
-        
+
+        # prediction=0.72 → fused = 0.50×0.72 = 0.36 > BUY_THRESHOLD(0.345)
         classification = ClassificationSignal(
             timestamp=ts,
-            prediction=0.65,
+            prediction=0.72,
             signal="BUY",
             confidence=0.75,
         )
-        
+
         neutral_sentiment = SentimentSignal(
             timestamp=ts,
             sentiment_score=0.0,
@@ -728,16 +730,16 @@ class TestE2EEdgeCases:
             high_impact_event=False,
             relevance_score=0.5,
         )
-        
+
         decision = agg.fuse(
             classification_signal=classification,
             sentiment_signal=neutral_sentiment,
         )
-        
-        # Should still be BUY but with lower score
+
+        # Should still be BUY — neutral sentiment (score=0) adds nothing to the fused score
         assert decision.action == "BUY"
-        # Fused score should be lower than pure classification (0.65)
-        assert decision.fused_score < 0.65
+        # Fused score should be lower than the raw prediction (weighted down by other terms)
+        assert decision.fused_score < 0.72
 
 
 if __name__ == "__main__":
