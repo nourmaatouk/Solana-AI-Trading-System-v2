@@ -71,12 +71,32 @@ jobs:
         # CPU-only torch keeps the download under 200 MB instead of ~2 GB.
         run: |
           pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install scipy numpy pandas xgboost scikit-learn pytest
+          pip install scipy numpy pandas xgboost scikit-learn joblib pytest
 
       - name: Run tests
         run: pytest services/models/fusion/tests/ services/models/spoofing_detection/tests/ -v
 
-  # ── 4. Security + ML quality audit ──────────────────────────────────────────
+  # ── 4. End-to-end integration tests ─────────────────────────────────────────
+  test-integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install numpy pandas scipy xgboost scikit-learn joblib pytest
+
+      - name: Run tests
+        run: |
+          pytest services/models/integration/ -v
+          pytest services/models/scripts/tests/ -v
+
+  # ── 5. Security + ML quality audit ──────────────────────────────────────────
   test-audit:
     name: Security & ML Audit Tests
     runs-on: ubuntu-latest
@@ -94,7 +114,7 @@ jobs:
       - name: Run tests
         run: pytest services/models/tests/ -v
 
-  # ── 5. Lint ──────────────────────────────────────────────────────────────────
+  # ── 6. Lint ──────────────────────────────────────────────────────────────────
   lint:
     name: Lint (ruff)
     runs-on: ubuntu-latest
@@ -109,7 +129,12 @@ jobs:
         run: pip install ruff
 
       - name: Run ruff
-        # Keep CI focused on correctness blockers for now. The repo still has
-        # legacy/demo scripts with broad style debt; this catches syntax errors,
-        # undefined names, and invalid control-flow without blocking on cleanup.
-        run: ruff check services/ apps/ --exclude ml_env --select E9,F63,F7,F82
+        # Keep CI focused on correctness blockers. Catches syntax errors,
+        # undefined names, and invalid control-flow without blocking on style.
+        # Exclude nested virtual-envs (ml_env inside classification/) and
+        # the Node.js trading-dashboard tree.
+        run: |
+          ruff check services/ apps/ \
+            --exclude "*/ml_env/*" \
+            --exclude "apps/trading-dashboard/*" \
+            --select E9,F63,F7,F82
