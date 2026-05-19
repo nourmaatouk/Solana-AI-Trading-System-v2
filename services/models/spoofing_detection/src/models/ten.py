@@ -263,11 +263,12 @@ class TENSpoofingDetector(nn.Module):
             if self.delta_t_feature_idx < x.shape[-1]:
                 delta_t = x[:, :, self.delta_t_feature_idx]
             else:
-                logger.debug(
-                    "ATPE inactive: delta_t_feature_idx=%d >= d_input=%d; "
-                    "using standard sinusoidal PE",
-                    self.delta_t_feature_idx, x.shape[-1],
-                )
+                if not torch.jit.is_scripting():
+                    logger.debug(
+                        "ATPE inactive: delta_t_feature_idx=%d >= d_input=%d; "
+                        "using standard sinusoidal PE",
+                        self.delta_t_feature_idx, x.shape[-1],
+                    )
             
         embedded = self.input_projection(x)
         encoded = self.positional_encoding(embedded, delta_t)

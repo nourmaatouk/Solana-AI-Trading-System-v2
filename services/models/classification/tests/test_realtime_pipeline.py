@@ -21,8 +21,10 @@ def test_build_steps_allows_skipping_expensive_fetches():
 
     assert step_names == [
         "feature_builder",
+        "hawkes_features",
         "feature_merge",
         "predictor",
+        "rl_predictor",
         "dashboard",
     ]
 
