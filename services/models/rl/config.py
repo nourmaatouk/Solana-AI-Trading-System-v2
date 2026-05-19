@@ -39,7 +39,7 @@ REALTIME_FEATURES_CSV = REALTIME_DIR / "latest_features_with_sentiment.csv"
 
 # ── Environment ───────────────────────────────────────────────────────────────
 # Portfolio state features appended to market observation
-PORTFOLIO_FEATURE_DIM = 3   # [current_position, unrealized_pnl_pct, steps_since_trade/100]
+PORTFOLIO_FEATURE_DIM = 4   # [position, unrealized_pnl_pct, steps_since_trade/100, rel_to_bh]
 INITIAL_EQUITY        = 10_000.0
 MIN_EQUITY_FRACTION   = 0.50   # episode ends if equity < 50% of initial
 
@@ -51,8 +51,8 @@ PPO_N_EPOCHS        = 10
 PPO_GAMMA           = 0.99
 PPO_GAE_LAMBDA      = 0.95
 PPO_CLIP_RANGE      = 0.2
-PPO_ENT_COEF        = 0.05   # higher entropy → more exploration, slower collapse
-PPO_TOTAL_TIMESTEPS = 1_000_000
+PPO_ENT_COEF        = 0.003  # low entropy — let policy converge to near-deterministic
+PPO_TOTAL_TIMESTEPS = 2_000_000
 PPO_NET_ARCH        = [256, 256]
 PPO_DEVICE          = "cpu"  # MLP policy trains faster on CPU (SB3 recommendation)
 
@@ -65,12 +65,10 @@ PPO_EVAL_FREQ_MIN = 10_000
 
 # ── Reward shaping ────────────────────────────────────────────────────────────
 # Drawdown penalty applied only while in position.
-DRAWDOWN_PENALTY_COEF = 0.10
-# Per-trade cost on top of fee/slippage. Reduced from 0.005 so the agent is
-# not scared out of trades — the Sharpe term now handles overtrading.
-TRADE_PENALTY = 0.001
-# Rolling-Sharpe bonus: rewards consistent risk-adjusted returns over a window.
-SHARPE_WINDOW     = 20
-SHARPE_REWARD_COEF = 0.05
-# Tiny bonus for holding a profitable open position — prevents premature exits.
-HOLD_PROFIT_COEF  = 0.001
+DRAWDOWN_PENALTY_COEF = 0.02  # small stop-loss incentive while holding
+# Per-trade cost on top of fee/slippage. Set high to strongly penalise overtrading.
+TRADE_PENALTY = 0.005
+# Sharpe bonus on excess returns. Disabled (0.0) until the basic excess-return
+# signal produces a working policy — adding it complicates the learning signal.
+SHARPE_WINDOW      = 20
+SHARPE_REWARD_COEF = 0.0

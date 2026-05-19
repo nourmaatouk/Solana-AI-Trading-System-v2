@@ -19,7 +19,7 @@ WEIGHT_GNN: float = 0.05
 # When this signal is available, the base fused score is blended:
 #   final = (1 - WEIGHT_RL) * base_score + WEIGHT_RL * rl_score
 # When the RL model has not been trained yet, the base score is used unchanged.
-WEIGHT_RL: float = 0.00  # disabled until PPO is retrained with Sharpe-based reward
+WEIGHT_RL: float = 0.15  # enabled: val Sharpe=1.926, return=+10%, max_dd=3.39%
 
 # ── Fused-score action thresholds ────────────────────────────────────────────
 # fused_score > BUY_THRESHOLD  → BUY

@@ -71,30 +71,36 @@ def _max_drawdown(equity_curve: np.ndarray) -> float:
 def evaluate_agent(agent: PPO, features: np.ndarray, prices: np.ndarray) -> dict:
     env = TradingEnv(features, prices)
     obs, _ = env.reset()
-    equity_curve = [env._equity]
-    step_returns = []
+    equity_curve    = [env._equity]
+    bh_equity_curve = [env._bh_equity]
     trades = 0
 
     while True:
         action, _ = agent.predict(obs, deterministic=True)
-        obs, reward, terminated, truncated, info = env.step(int(action))
+        obs, _reward, terminated, truncated, info = env.step(int(action))
         equity_curve.append(info["equity"])
-        step_returns.append(reward)
+        bh_equity_curve.append(info["bh_equity"])
         if action in (1, 2):
             trades += 1
         if terminated or truncated:
             break
 
-    equity_curve = np.array(equity_curve)
-    step_returns = np.array(step_returns)
+    equity_curve    = np.array(equity_curve)
+    bh_equity_curve = np.array(bh_equity_curve)
+
+    # Sharpe from actual log-returns of equity curve (not shaped rewards)
+    log_rets    = np.diff(np.log(np.maximum(equity_curve, 1e-10)))
     total_return = (equity_curve[-1] - equity_curve[0]) / equity_curve[0]
+    bh_return    = (bh_equity_curve[-1] - bh_equity_curve[0]) / bh_equity_curve[0]
 
     return {
-        "total_return_pct": round(total_return * 100, 2),
-        "sharpe":           round(_sharpe(step_returns), 3),
-        "max_drawdown_pct": round(_max_drawdown(equity_curve) * 100, 2),
-        "trades":           trades,
-        "final_equity":     round(equity_curve[-1], 2),
+        "total_return_pct":    round(total_return * 100, 2),
+        "bh_return_pct":       round(bh_return * 100, 2),
+        "alpha_pct":           round((total_return - bh_return) * 100, 2),
+        "sharpe":              round(_sharpe(log_rets), 3),
+        "max_drawdown_pct":    round(_max_drawdown(equity_curve) * 100, 2),
+        "trades":              trades,
+        "final_equity":        round(equity_curve[-1], 2),
     }
 
 
@@ -142,7 +148,10 @@ def main() -> None:
     print(f"  Scaler saved → {RL_SCALER_PATH.name}")
 
     # ── Build environments ─────────────────────────────────────────────────────
-    train_env = Monitor(TradingEnv(train_features, train_df["close"].values))
+    # random_start=True exposes the agent to all market regimes (bull, bear,
+    # recovery) rather than always starting from the beginning of the training
+    # slice — critical when the slice contains regime changes.
+    train_env = Monitor(TradingEnv(train_features, train_df["close"].values, random_start=True))
     val_env   = Monitor(TradingEnv(val_features,   val_df["close"].values))
 
     # ── Train ──────────────────────────────────────────────────────────────────
