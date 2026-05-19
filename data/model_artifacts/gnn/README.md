@@ -1,18 +1,9 @@
 # GNN Model Artifacts
 
-Graph Neural Network model files for analyzing market relationships.
+**This directory is empty.** The TEN-GNN checkpoint lives at:
 
-## Purpose
+```
+services/models/spoofing_detection/checkpoints/tengnn_btc_eth_sol_1min/best_model.pt
+```
 
-Stores trained GNN models for:
-- Analyzing token correlation networks
-- Capturing market graph structures
-- Predicting price movements based on network effects
-- Identifying connected communities of assets
-
-## Contents
-
-- Model weights and architecture
-- Scaler and normalization parameters
-- Configuration files
-- Performance metrics
+(8.3 MB — epoch=4, val_f1=0.369, test_f1=0.522, threshold=0.51)

@@ -102,10 +102,13 @@ def main() -> None:
     df = pd.read_csv(REALTIME_FEATURES_CSV)
     missing = [c for c in feature_cols if c not in df.columns]
     if missing:
-        sig = _neutral(f"Missing features in realtime CSV: {missing[:5]}")
-        print(f"  WARNING: {sig['note']}")
-        print("=" * 60)
-        return
+        # Fill missing columns (e.g. stale orderbook) with 0 — same degraded-mode
+        # behaviour used by the XGBoost and DNN predictors.
+        df = pd.concat(
+            [df, pd.DataFrame(0.0, index=df.index, columns=missing)],
+            axis=1,
+        )
+        print(f"  NOTE: {len(missing)} features missing (orderbook stale?), filled with 0: {missing[:3]}")
 
     row = df[feature_cols].iloc[[-1]].fillna(0.0).values
     row_scaled = scaler.transform(row).astype(np.float32)

@@ -1,17 +1,18 @@
 # Apps Layer
 
-Contains the user-facing and orchestration applications for the Solana AI Trading System.
+User-facing applications for the Solana AI Trading System.
 
 ## Structure
 
-- **agent/** - AI agent orchestration using ElizaOS for autonomous trading decisions
-- **api/** - FastAPI backend server providing REST endpoints for trading operations, data retrieval, and system management
-- **dashboard/** - React frontend for real-time monitoring, SHAP explainability visualization, and trading analytics
+| Directory | Status | Description |
+|-----------|--------|-------------|
+| `api/` | ✅ Implemented | FastAPI backend — read-only signal and status endpoints |
+| `dashboard/` | ✅ Implemented | React/Vite SPA — signal panel, paper trading metrics |
+| `trading-dashboard/` | ✅ Implemented | Node.js + React — live Binance WS, candlestick chart, order book |
+| `agent/` | ⏳ Partial | Only `fusion_consumer.py` exists; ElizaOS orchestration not built |
 
-## Purpose
+## What is not implemented
 
-This layer provides the interface between the core trading system and end users/external systems. It handles:
-- API request routing and validation
-- Agent-based decision orchestration
-- Real-time dashboard visualization
-- Performance monitoring and logging
+- **SHAP visualizations** — the `Heatmaps/`, `ShapExplainer/`, and `LiveSignals/` component folders are stubs with no code.
+- **Agent autonomy** — `apps/agent/` has no orchestrator, no plugin system, no memory layer, and no reasoning engine. The only working file is `fusion_consumer.py`.
+- **WebSocket push** — dashboards use polling (15–30 s), not server-push WebSocket.

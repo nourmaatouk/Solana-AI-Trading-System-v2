@@ -402,14 +402,107 @@ class AdversarialInjector:
             if mean_sim > 0.95:
                 logger.warning("WARNING: synthetic sequences may be too similar — increase variation in injection parameters")
 
-        # KL logic (mocked print as we don't naturally evaluate discrete real cancel_ratios here globally for pure synth logic)
-        logger.info("Cancel ratio KL Divergence: 0.04 (Below 0.1 threshold)")
+        # ── KL divergence validation (paper §3.2, threshold < 0.05) ──────────
+        # Compare key microstructure feature distributions between synthetic
+        # spoof and legitimate sequences. High KL confirms spoof sequences
+        # carry genuine manipulative signatures; low KL would indicate the
+        # generator is not producing distinguishable patterns.
+        if n_spoof >= 10 and n_legit >= 10:
+            self._validate_kl_divergence(X_all, y_all)
 
         logger.info(
             "Generated %d sequences: %d legit, %d hard negatives, %d spoof",
             n_sequences, n_legit, n_hard_neg, n_spoof,
         )
         return X_all, y_all
+
+    # ── Feature indices (must match feature_engineering.py layout) ───────────
+    _F_DELTA_T   = 43   # inter-event time (ms)
+    _F_IMBALANCE = 44   # order imbalance
+    _F_BID_VOL0  = 20   # first bid volume level (proxy for cancel detection)
+    _F_ASK_VOL0  = 30   # first ask volume level
+
+    def _kl_divergence(self, p: np.ndarray, q: np.ndarray, n_bins: int = 50) -> float:
+        """KL(P || Q) estimated via equal-range histogram. Returns KL in nats."""
+        eps = 1e-10
+        lo = min(float(p.min()), float(q.min()))
+        hi = max(float(p.max()), float(q.max()))
+        if hi <= lo:
+            return 0.0
+        p_h, _ = np.histogram(p, bins=n_bins, range=(lo, hi))
+        q_h, _ = np.histogram(q, bins=n_bins, range=(lo, hi))
+        p_h = (p_h + eps) / (p_h.sum() + eps * n_bins)
+        q_h = (q_h + eps) / (q_h.sum() + eps * n_bins)
+        return float(np.sum(p_h * np.log(p_h / q_h)))
+
+    def _cancel_ratio_proxy(self, seqs: np.ndarray) -> np.ndarray:
+        """Estimate cancel ratio as volume-drop fraction in cancellation phase (t=70-79)."""
+        # Phase 2 (t=30-59): peak spoof volume; Phase 4 (t=70-79): cancel burst
+        # Use first bid + ask volume level as proxy for total visible volume
+        bid_vol = seqs[:, :, self._F_BID_VOL0]
+        ask_vol = seqs[:, :, self._F_ASK_VOL0]
+        total_vol = bid_vol + ask_vol + 1e-8
+        peak_vol  = total_vol[:, 30:60].mean(axis=1)
+        after_vol = total_vol[:, 70:80].mean(axis=1)
+        return 1.0 - np.clip(after_vol / (peak_vol + 1e-8), 0.0, 1.0)
+
+    _KL_THRESHOLD = 0.05
+
+    def _validate_kl_divergence(self, X_all: np.ndarray, y_all: np.ndarray) -> None:
+        """
+        Validate that synthetic spoof and legitimate sequences have measurably
+        distinct distributions on the three key microstructure features.
+
+        Paper §3.2: KL divergence < 0.05 between synthetic and real patterns
+        confirms realistic generation. Here we compute KL(spoof || legit) on
+        each feature — a value that is too LOW (< 0.02) would indicate the
+        generator is not producing distinguishable spoofing signatures.
+        """
+        spoof_mask = y_all == 1
+        legit_mask = y_all == 0
+        X_spoof = X_all[spoof_mask]
+        X_legit = X_all[legit_mask]
+
+        # 1. Order imbalance (f44) — should be strongly skewed in spoof seqs
+        kl_imb = self._kl_divergence(
+            X_spoof[:, :, self._F_IMBALANCE].ravel(),
+            X_legit[:, :, self._F_IMBALANCE].ravel(),
+        )
+
+        # 2. Inter-event delta_t (f43) — spoof has rapid burst events
+        kl_dt = self._kl_divergence(
+            X_spoof[:, :, self._F_DELTA_T].ravel(),
+            X_legit[:, :, self._F_DELTA_T].ravel(),
+        )
+
+        # 3. Cancel ratio proxy — core spoofing signature
+        kl_cr = self._kl_divergence(
+            self._cancel_ratio_proxy(X_spoof),
+            self._cancel_ratio_proxy(X_legit),
+        )
+
+        logger.info(
+            "KL divergence (spoof || legit) — imbalance: %.4f  delta_t: %.4f  cancel_ratio: %.4f",
+            kl_imb, kl_dt, kl_cr,
+        )
+        if kl_imb < self._KL_THRESHOLD:
+            logger.warning(
+                "KL(imbalance) = %.4f < %.2f — spoof/legit imbalance distributions "
+                "overlap too much; generator may not be injecting sufficient bias",
+                kl_imb, self._KL_THRESHOLD,
+            )
+        if kl_dt < self._KL_THRESHOLD:
+            logger.warning(
+                "KL(delta_t) = %.4f < %.2f — timing distributions are too similar; "
+                "burst inter-event times may not be short enough",
+                kl_dt, self._KL_THRESHOLD,
+            )
+        if kl_cr < self._KL_THRESHOLD:
+            logger.warning(
+                "KL(cancel_ratio) = %.4f < %.2f — spoof cancellation signature is "
+                "not distinct from legitimate sequences",
+                kl_cr, self._KL_THRESHOLD,
+            )
 
     def _generate_legitimate_sequence(
 
@@ -498,7 +591,6 @@ class AdversarialInjector:
         if spoof_type != "hard_negative":
             for t in range(70, 80):
                 # Volumes drop back to normal (orders cancelled)
-                if spoof_type == "hard_negative": continue
                 if spoof_side == 1:
                     for lv in range(10):
                         seq[t, 20 + lv] *= 0.2  # bid vol collapses

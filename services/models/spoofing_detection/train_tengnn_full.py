@@ -71,6 +71,10 @@ def parse_args() -> argparse.Namespace:
                    help="Number of transformer layers (default 3)")
     p.add_argument("--dropout", type=float, default=0.1,
                    help="Dropout rate (default 0.1)")
+    p.add_argument("--weight-decay", type=float, default=1e-4,
+                   help="AdamW weight decay (default 1e-4)")
+    p.add_argument("--patience", type=int, default=8,
+                   help="Early stopping patience in epochs (default 8)")
     p.add_argument("--checkpoint-dir", type=str, default=None,
                    help="Override checkpoint directory")
     return p.parse_args()
@@ -376,15 +380,15 @@ def main() -> int:
         batch_size=args.batch_size,
         max_epochs=args.epochs,
         lr=args.lr,
-        weight_decay=1e-4,
+        weight_decay=args.weight_decay,
         grad_clip=1.0,
-        patience=8,
+        patience=args.patience,
         checkpoint_dir=ckpt_dir,
         log_file=f"training_log_tengnn_{'_'.join(a.lower() for a in args.assets)}.csv",
         device="auto",
     )
 
-    print(f"\n[5] Training for up to {args.epochs} epochs (patience=8)...")
+    print(f"\n[5] Training for up to {args.epochs} epochs (patience={args.patience})...")
     best = train_tengnn(model, train_loader, val_loader, adj_tensor, config, device)
 
     # ── 6. Collect probabilities on val + test ────────────────────────────────

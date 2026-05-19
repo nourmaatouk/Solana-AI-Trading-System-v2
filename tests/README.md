@@ -1,31 +1,25 @@
 # Tests
 
-Comprehensive test suite for the trading system.
+Tests live inside each service directory, not here. The `unit/`, `integration/`, and `e2e/` folders in this directory are empty stubs.
 
-## Structure
+## Where tests actually are
 
-- **e2e/** - End-to-end integration tests
-- **integration/** - Integration tests for service interactions
-- **unit/** - Unit tests for individual components
+| Location | What is tested |
+|----------|---------------|
+| `services/models/classification/tests/` | XGBoost pipeline, config, feature engineering |
+| `services/models/nlp/tests/` | FinBERT sentiment, NLP contracts, aggregation |
+| `services/models/fusion/tests/` | Fusion aggregator, contracts, batch fusion |
+| `services/models/spoofing_detection/` | TEN-GNN, Hawkes estimator, benchmarks |
+| `services/models/integration/` | End-to-end pipeline tests (13 tests) |
+| `apps/api/tests/` | FastAPI endpoint tests |
 
-## Purpose
+## Running all tests
 
-Ensures:
-- Code quality and correctness
-- Regression prevention
-- System reliability
-- Performance benchmarks
+```bash
+python -m pytest services/models/classification/tests/ -v
+python -m pytest services/models/nlp/tests/ -v
+python -m pytest services/models/fusion/tests/ -v
+python -m pytest services/models/spoofing_detection/ -v
+```
 
-## Test Types
-
-- **Unit Tests**: Test individual functions and classes
-- **Integration Tests**: Test service interactions
-- **E2E Tests**: Test complete trading workflows
-- **Performance Tests**: Benchmark critical paths
-
-## CI/CD Integration
-
-Tests run automatically on:
-- Pull request submission
-- Commit to main branch
-- Scheduled test runs
+CI runs on every push via `.github/workflows/ci.yml`.

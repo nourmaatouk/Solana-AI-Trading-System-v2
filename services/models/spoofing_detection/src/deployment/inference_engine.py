@@ -75,8 +75,8 @@ class SpoofingInferenceEngine:
             ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
             cfg = ckpt.get("config", {})
             n_assets = cfg.get("n_assets", 3)
-            d_input  = cfg.get("d_input", 33)
-            d_model  = cfg.get("d_model", 256)
+            d_input  = cfg.get("d_input", 34)
+            d_model  = cfg.get("d_model", 128)
             n_heads  = cfg.get("n_heads", min(8, d_model // 32))
             d_ff     = cfg.get("d_ff", d_model * 4)
             sd = ckpt["model_state_dict"]
@@ -120,13 +120,22 @@ class SpoofingInferenceEngine:
             return torch.tensor(live, dtype=torch.float32, device=self._device)
         return self._default_adj
 
-    def infer(self, sequences: torch.Tensor) -> np.ndarray:
+    def infer(
+        self,
+        sequences: torch.Tensor,
+        target_asset_idx: int = 0,
+    ) -> np.ndarray:
         """Run inference and return spoofing probability for each window.
 
         Parameters
         ----------
         sequences : torch.Tensor of shape (B, N, T, D)
             B = batch size, N = n_assets, T = window_length, D = n_features.
+        target_asset_idx : int, default 0
+            Which asset slot the classifier head reads from. Must match the
+            slot that contains real data. In realtime (SOL-only), pass 2.
+            During training / multi-asset evaluation the model was trained
+            with the default (0 = BTC); pass 0 there for consistency.
 
         Returns
         -------
@@ -136,17 +145,22 @@ class SpoofingInferenceEngine:
             adj = self._current_adj()
             sequences = sequences.to(self._device)
             with torch.no_grad():
-                logits = self._model(sequences, adj)
+                logits = self._model(sequences, adj, target_asset_idx=target_asset_idx)
                 probs = torch.softmax(logits, dim=-1)[:, 1]
             return probs.cpu().numpy()
 
-    def predict(self, sequences: torch.Tensor, threshold: Optional[float] = None) -> np.ndarray:
+    def predict(
+        self,
+        sequences: torch.Tensor,
+        threshold: Optional[float] = None,
+        target_asset_idx: int = 0,
+    ) -> np.ndarray:
         """Return binary predictions (0=legit, 1=spoofing).
 
         Uses the calibrated threshold saved in the checkpoint unless overridden.
         """
         t = threshold if threshold is not None else self._threshold
-        return (self.infer(sequences) >= t).astype(np.int64)
+        return (self.infer(sequences, target_asset_idx=target_asset_idx) >= t).astype(np.int64)
 
 def benchmark_inference(model, input_tensor, adj_tensor, name="Model", iterations=100):
     model.eval()

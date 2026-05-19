@@ -64,8 +64,13 @@ RL_CONFIDENCE_THRESHOLD = float(os.environ.get("RL_CONFIDENCE_THRESHOLD", "0.60"
 PPO_EVAL_FREQ_MIN = 10_000
 
 # ── Reward shaping ────────────────────────────────────────────────────────────
-DRAWDOWN_PENALTY_COEF = 0.05   # multiplied by current drawdown fraction (5× stronger)
-# Extra penalty charged once per trade (on top of fee/slippage) to discourage
-# overtrading.  At 0.005 a round-trip costs 1.5% in reward — the agent must
-# be confident before entering.
-TRADE_PENALTY = 0.005
+# Drawdown penalty applied only while in position.
+DRAWDOWN_PENALTY_COEF = 0.10
+# Per-trade cost on top of fee/slippage. Reduced from 0.005 so the agent is
+# not scared out of trades — the Sharpe term now handles overtrading.
+TRADE_PENALTY = 0.001
+# Rolling-Sharpe bonus: rewards consistent risk-adjusted returns over a window.
+SHARPE_WINDOW     = 20
+SHARPE_REWARD_COEF = 0.05
+# Tiny bonus for holding a profitable open position — prevents premature exits.
+HOLD_PROFIT_COEF  = 0.001

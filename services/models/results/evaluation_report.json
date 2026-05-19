@@ -1,0 +1,106 @@
+{
+    "benchmarks_standardized": [
+        {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "Model": "Rule-Based",
+            "Data Source": "Kaggle (BTC/ETH/SOL)",
+            "trained": true,
+            "latency_ms_per_seq": 0.00146,
+            "note": "peak imbalance>0.7 AND cancel_ratio>0.35"
+        },
+        {
+            "precision": 0.20155038759689922,
+            "recall": 0.29213483146067415,
+            "f1": 0.23853211009174313,
+            "Model": "Logistic Regression",
+            "Data Source": "Kaggle (BTC/ETH/SOL)",
+            "trained": true,
+            "latency_ms_per_seq": 0.00048
+        },
+        {
+            "precision": 0.2571428571428571,
+            "recall": 0.10112359550561797,
+            "f1": 0.14516129032258066,
+            "Model": "Random Forest",
+            "Data Source": "Kaggle (BTC/ETH/SOL)",
+            "trained": true,
+            "latency_ms_per_seq": 0.0158
+        },
+        {
+            "precision": 0.2879581151832461,
+            "recall": 0.6179775280898876,
+            "f1": 0.39285714285714285,
+            "Model": "LSTM-Attention",
+            "Data Source": "Kaggle (BTC/ETH/SOL)",
+            "trained": true,
+            "latency_ms_per_seq": 0.10454,
+            "note": "single-asset SOL, 20 epochs"
+        },
+        {
+            "precision": 0.16521739130434782,
+            "recall": 0.21348314606741572,
+            "f1": 0.18627450980392157,
+            "Model": "TEN",
+            "Data Source": "Kaggle (BTC/ETH/SOL)",
+            "trained": true,
+            "latency_ms_per_seq": 0.33551,
+            "note": "single-asset SOL, 20 epochs"
+        },
+        {
+            "precision": 0.64,
+            "recall": 1.0,
+            "f1": 0.7804878048780488,
+            "Model": "Rule-Based",
+            "Data Source": "Synthetic",
+            "trained": true,
+            "latency_ms_per_seq": 0.00098,
+            "note": "LOBSTER features 44+43"
+        },
+        {
+            "precision": 0.7818181818181819,
+            "recall": 0.8958333333333334,
+            "f1": 0.8349514563106796,
+            "Model": "Logistic Regression",
+            "Data Source": "Synthetic",
+            "trained": true,
+            "latency_ms_per_seq": 0.00171
+        },
+        {
+            "precision": 0.8103448275862069,
+            "recall": 0.9791666666666666,
+            "f1": 0.8867924528301887,
+            "Model": "Random Forest",
+            "Data Source": "Synthetic",
+            "trained": true,
+            "latency_ms_per_seq": 0.03534
+        },
+        {
+            "precision": 0.3381294964028777,
+            "recall": 0.9791666666666666,
+            "f1": 0.5026737967914439,
+            "Model": "LSTM-Attention",
+            "Data Source": "Synthetic",
+            "trained": false,
+            "latency_ms_per_seq": 0.42608,
+            "note": "random weights \u2014 latency only"
+        },
+        {
+            "precision": 0.3233082706766917,
+            "recall": 0.8958333333333334,
+            "f1": 0.47513812154696133,
+            "Model": "TEN",
+            "Data Source": "Synthetic",
+            "trained": false,
+            "latency_ms_per_seq": 1.49462,
+            "note": "random weights \u2014 latency only"
+        }
+    ],
+    "benchmark_metadata": {
+        "generated_utc": "2026-05-19T09:47:29.598916",
+        "checkpoint_path": "/home/nourmaatouk/Solana-AI-Trading-System/services/checkpoints/tengnn_btc_eth_sol_1min/best_model.pt",
+        "checkpoint_used": false,
+        "kaggle_data_used": true
+    }
+}

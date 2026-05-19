@@ -1,18 +1,20 @@
 # Agent Module
 
-AI-powered autonomous trading agent built on ElizaOS framework.
+**Status: Partial — fusion consumer only. ElizaOS orchestration is not built.**
 
-## Structure
+## What exists
 
-- **memory/** - Agent memory systems for context retention and decision history
-- **plugins/** - Agent plugins including Solana integration and trading tools
-- **reasoning/** - Reasoning engines for multi-step decision making and strategy planning
+| File | Description |
+|------|-------------|
+| `fusion_consumer.py` | Reads `last_fused_decision.json` and logs the fused trading decision |
+| `run_fusion_consumer.py` | Entry point to run the consumer |
 
-## Purpose
+## What is not yet implemented
 
-This module implements autonomous trading agents that:
-- Make real-time trading decisions based on ML model outputs
-- Maintain context and memory across trading sessions
-- Execute complex multi-step trading strategies
-- Integrate with Solana blockchain for transaction execution
-- Provide explainable reasoning for trading decisions
+| Directory | Status | Planned Phase |
+|-----------|--------|---------------|
+| `memory/` | ⏳ Stub | Phase 5 — ChromaDB episodic memory |
+| `plugins/` | ⏳ Stub | Phase 6 — Solana Agent Kit |
+| `reasoning/` | ⏳ Stub | Phase 5 — Ollama Llama-3 reasoning |
+
+No ElizaOS orchestrator, no plugin system, no wallet interaction, and no autonomous decision-making exists in this directory.

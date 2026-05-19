@@ -1,19 +1,9 @@
 # XGBoost Model Artifacts
 
-XGBoost model files for classification and regression tasks.
+**This directory is empty.** The trained XGBoost checkpoints live at:
 
-## Purpose
+```
+services/models/classification/checkpoints/   — xgboost_*.json files per horizon (H1/H4/H8/H16)
+```
 
-Stores trained XGBoost models for:
-- Price direction prediction
-- Volatility forecasting
-- Trade classification (buy/sell/hold)
-- Feature importance analysis
-
-## Contents
-
-- Model booster objects
-- Feature names and importance scores
-- Training parameters
-- Cross-validation metrics
-- Model performance benchmarks
+H4 is the production model (val AUC ≈ 0.71, confidence gate at 0.69).

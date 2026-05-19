@@ -1,27 +1,11 @@
 # Infrastructure
 
-Infrastructure-as-code and deployment configurations.
+| Directory | Status | Description |
+|-----------|--------|-------------|
+| `systemd/` | ✅ Implemented | Orderbook collector systemd service template |
+| `docker/` | ⏳ Not built | No Dockerfiles or Compose files yet |
+| `k8s/` | ⏳ Not built | Kubernetes manifests are stub placeholders |
+| `terraform/` | ⏳ Not built | No IaC code |
+| `scripts/` | ⏳ Not built | No scripts |
 
-## Structure
-
-- **docker/** - Docker containerization files
-- **k8s/** - Kubernetes deployment manifests
-- **scripts/** - Infrastructure management scripts
-- **terraform/** - Terraform IaC for cloud resources
-
-## Purpose
-
-Manages:
-- Container images and builds
-- Kubernetes orchestration
-- Cloud infrastructure provisioning
-- Environment configuration
-- Deployment automation
-
-## Key Components
-
-- Service containerization
-- Kubernetes deployments and services
-- Network and storage configuration
-- CI/CD pipeline integration
-- Infrastructure versioning and reproducibility
+The only working infrastructure artifact is the systemd service template in `systemd/`. Everything else is a planned stub.

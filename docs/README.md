@@ -1,26 +1,11 @@
 # Documentation
 
-Comprehensive documentation for the Solana AI Trading System.
+**Status: Stub.** No ADRs or runbooks have been written yet.
 
-## Structure
+`adr/` and `runbooks/` contain only README placeholder files.
 
-- **adr/** - Architecture Decision Records documenting design choices
-- **runbooks/** - Operational procedures and troubleshooting guides
-
-## Purpose
-
-Provides:
-- Architecture and design documentation
-- Deployment and operational procedures
-- Troubleshooting guides
-- Best practices and conventions
-- Historical design decisions
-
-## Usage
-
-Refer to documentation for:
-- Understanding system architecture
-- Operating the system in production
-- Onboarding new team members
-- Debugging issues
-- Understanding design rationale
+For operational guidance, see:
+- `infra/systemd/README.md` — running the orderbook collector as a systemd service
+- `apps/api/README.md` — API server setup and endpoints
+- `services/models/README.md` — full model pipeline documentation (the best-documented file in the repo)
+- Root `README.md` — system overview and quick start

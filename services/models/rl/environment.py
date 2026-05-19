@@ -11,11 +11,16 @@ Action space: Discrete(3)
   2 = SELL    — exit long / go short
 
 Reward:
-  step_log_return × position − cost_penalty − drawdown_penalty
+  step_log_return × position
+  − cost_penalty (on trade transitions only)
+  − drawdown_penalty × position  (only while holding)
+  + sharpe_bonus  (rolling-20-step Sharpe contribution)
+  + hold_profit_bonus  (tiny incentive to stay in winning trades)
 """
 from __future__ import annotations
 
 import math
+from collections import deque
 from typing import Any
 
 import gymnasium as gym
@@ -26,9 +31,12 @@ from gymnasium import spaces
 from config import (
     DRAWDOWN_PENALTY_COEF,
     FEE_RT,
+    HOLD_PROFIT_COEF,
     INITIAL_EQUITY,
     MIN_EQUITY_FRACTION,
     PORTFOLIO_FEATURE_DIM,
+    SHARPE_REWARD_COEF,
+    SHARPE_WINDOW,
     SLIPPAGE_PCT,
     TRADE_PENALTY,
 )
@@ -70,6 +78,7 @@ class TradingEnv(gym.Env):
         self._equity         = INITIAL_EQUITY
         self._peak_equity    = INITIAL_EQUITY
         self._steps_no_trade = 0
+        self._return_buf: deque[float] = deque(maxlen=SHARPE_WINDOW)
 
         if seed is not None:
             self.action_space.seed(seed)
@@ -84,6 +93,7 @@ class TradingEnv(gym.Env):
         self._equity         = INITIAL_EQUITY
         self._peak_equity    = INITIAL_EQUITY
         self._steps_no_trade = 0
+        self._return_buf.clear()
         return self._get_obs(), {}
 
     def step(self, action: int):
@@ -113,11 +123,29 @@ class TradingEnv(gym.Env):
         else:
             log_ret = 0.0
 
-        self._equity *= math.exp(log_ret * self._position) * (1 - cost)
+        step_pnl = log_ret * self._position
+        self._equity *= math.exp(step_pnl) * (1 - cost)
         self._peak_equity = max(self._peak_equity, self._equity)
-
         drawdown = (self._peak_equity - self._equity) / self._peak_equity
-        reward   = float(log_ret * self._position - cost - DRAWDOWN_PENALTY_COEF * drawdown)
+
+        # Rolling-Sharpe bonus: push the agent towards consistent risk-adjusted gains.
+        self._return_buf.append(step_pnl)
+        sharpe_bonus = 0.0
+        if len(self._return_buf) >= SHARPE_WINDOW:
+            buf = np.asarray(self._return_buf)
+            std = buf.std() + 1e-8
+            sharpe_bonus = SHARPE_REWARD_COEF * (buf.mean() / std)
+
+        # Holding bonus: small incentive to stay in winning positions.
+        unrealized = 0.0
+        if self._position == 1.0 and self._entry_price > 0:
+            unrealized = (price_now - self._entry_price) / self._entry_price
+        hold_bonus = HOLD_PROFIT_COEF * max(0.0, unrealized) * self._position
+
+        # Drawdown penalty only while holding — flat periods don't accumulate drawdown cost.
+        dd_penalty = DRAWDOWN_PENALTY_COEF * drawdown * self._position
+
+        reward = float(step_pnl - cost + sharpe_bonus + hold_bonus - dd_penalty)
 
         self._t += 1
         terminated = (

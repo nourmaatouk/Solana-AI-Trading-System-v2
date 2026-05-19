@@ -1,24 +1,21 @@
 # Data Directory
 
-Storage for training data, model artifacts, and processed datasets.
+Local development data (gitignored in production).
 
 ## Structure
 
-- **model_artifacts/** - Trained model files (GNN, PPO, XGBoost, FinBERT)
-- **processed/** - Cleaned and feature-engineered datasets ready for training
-- **raw/** - Raw market data and source data
+```
+data/
+  raw/              — Raw CSV downloads (Binance OHLCV, Kaggle LOB)
+  processed/        — Engineered feature CSVs used for training
+  model_artifacts/
+    xgboost/        — Placeholder; actual checkpoint at services/models/classification/checkpoints/
+    ppo/            — Placeholder; actual model at services/models/models/ppo_trading_agent.zip
+    gnn/            — Placeholder; actual checkpoint at services/models/spoofing_detection/checkpoints/
+```
 
-## Purpose
+## Notes
 
-Centralized storage for:
-- Historical market data
-- Feature engineering outputs
-- Trained model weights and configurations
-- Data for backtesting
-- Analysis and visualization data
-
-## Data Management
-
-- Raw data is ingested from market sources
-- Processed data contains cleaned and normalized features
-- Model artifacts are versioned for reproducibility
+- `model_artifacts/` subdirectories are empty placeholders. All trained model files live inside their respective service directories, not here.
+- FinBERT weights are not stored locally — they are downloaded from HuggingFace at runtime.
+- `data/` is excluded from git. Do not commit raw or processed CSVs.

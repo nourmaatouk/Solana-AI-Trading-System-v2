@@ -21,6 +21,7 @@ Writes: data/realtime/spoofing_score.json
       "branching_ratio":  <float | null>,
       "is_suspicious":    <bool>,
       "spoofing_probability": <float | null>,   # TEN output if available
+      "ten_threshold":        <float | null>,   # calibrated threshold embedded in checkpoint
       "message":          "..."
     }
 """
@@ -124,42 +125,64 @@ def _load_ten_spoof():
         return None
 
 
+# Training feature indices (n_levels=15 → 34 features):
+#   0: midpoint  1: spread  2..31: bid/ask notional at levels 1-15  32: imbalance  33: cancel_ratio
+# Map the realtime CSV columns to their closest training-feature positions.
+_REALTIME_FEATURE_MAP: dict[str, int] = {
+    "mid_price":       0,   # midpoint
+    "spread_mean":     1,   # spread
+    "bid_volume_mean": 2,   # best-bid notional (level-1 proxy)
+    "ask_volume_mean": 3,   # best-ask notional (level-1 proxy)
+    "imbalance_mean":  32,  # order imbalance
+}
+# Asset slot order must match training: --assets BTC ETH SOL
+_SOL_ASSET_IDX = 2
+
+
 def _ten_inference(engine, df: pd.DataFrame) -> float | None:
     """Run SpoofingInferenceEngine (TEN-GNN) on the last 100 orderbook rows.
 
-    The checkpoint was trained on 3-asset LOB data (BTC/ETH/SOL) with d_input=33
-    features per timestep.  In realtime we only have SOL orderbook features (~7),
-    so we zero-pad to d_input and replicate the single stream across all asset
-    slots.  The score is directionally meaningful as a spoofing intensity proxy
-    even though the cross-asset graph information is absent.
+    The checkpoint was trained on 3-asset (BTC/ETH/SOL) LOB data with 34
+    features per timestep.  In realtime only SOL data is available (~5 mapped
+    features), so:
+      - SOL slot (index 2) receives the mapped and per-window z-scored features.
+      - BTC/ETH slots (indices 0, 1) remain zeros — honest absence, not
+        fabricated values.  The cross-asset graph edges contribute zero, which
+        is correct given missing data; the SOL self-attention still operates.
+    Per-window z-scoring aligns the scale with training (StandardScaler).
 
     Returns P(spoofing) in [0, 1] or None on error.
     """
     try:
         import torch
 
-        feat_cols = [
-            c for c in df.columns
-            if c != "timestamp" and pd.api.types.is_numeric_dtype(df[c])
-        ]
-        SEQ     = 100
-        d_input  = engine._model.d_input   # 33 from checkpoint config
+        SEQ      = 100
+        d_input  = engine._model.d_input   # read from checkpoint (34 after retrain)
         n_assets = engine._model.n_assets  # 3 from checkpoint config
 
-        # Build (SEQ, d_input) feature matrix from available orderbook columns.
-        # Columns beyond len(feat_cols) remain zero (feature-dimension padding).
-        raw = df[feat_cols].fillna(0.0).tail(SEQ).to_numpy(dtype=np.float32)
-        seq = np.zeros((SEQ, d_input), dtype=np.float32)
-        n_cols = min(raw.shape[1], d_input)
-        seq[-len(raw):, :n_cols] = raw[:, :n_cols]
+        window = df.tail(SEQ).reset_index(drop=True)
+        n_rows = len(window)
 
-        # Replicate the SOL stream across all asset slots — we lack BTC/ETH data
-        # in realtime so this is the best available approximation.
+        sol_seq = np.zeros((SEQ, d_input), dtype=np.float32)
+
+        for col, feat_idx in _REALTIME_FEATURE_MAP.items():
+            if col not in window.columns:
+                continue
+            vals = window[col].fillna(0.0).to_numpy(dtype=np.float32)
+            # Place values right-aligned in the SEQ dimension
+            arr = np.zeros(SEQ, dtype=np.float32)
+            arr[SEQ - n_rows:] = vals
+            # Per-window z-score — matches StandardScaler used during training
+            std = arr.std()
+            if std > 1e-8:
+                arr = (arr - arr.mean()) / std
+            sol_seq[:, feat_idx] = arr
+
         # Shape: (1, n_assets, SEQ, d_input)
-        x = np.stack([seq] * n_assets, axis=0)[np.newaxis]
-        sequences = torch.tensor(x, dtype=torch.float32)
+        x = np.zeros((1, n_assets, SEQ, d_input), dtype=np.float32)
+        x[0, _SOL_ASSET_IDX] = sol_seq
 
-        probs = engine.infer(sequences)   # np.ndarray (1,)
+        probs = engine.infer(torch.tensor(x), target_asset_idx=_SOL_ASSET_IDX)  # np.ndarray (1,)
         return float(probs[0])
     except Exception as e:
         print(f"  TEN inference error: {e}")
@@ -181,6 +204,7 @@ def main() -> int:
         "branching_ratio":     None,
         "is_suspicious":       False,
         "spoofing_probability": None,
+        "ten_threshold":       None,
         "latest_orderbook_timestamp": None,
         "orderbook_age_minutes": None,
         "max_orderbook_age_minutes": MAX_ORDERBOOK_AGE_MINUTES,
@@ -265,11 +289,13 @@ def main() -> int:
     if ten_model is not None:
         prob_spoof = _ten_inference(ten_model, df)
         if prob_spoof is not None:
+            threshold = getattr(ten_model, "_threshold", 0.5)
             out["spoofing_probability"] = round(prob_spoof, 4)
-            print(f"  TEN P(spoof) = {prob_spoof:.4f}")
-            if prob_spoof >= 0.5:
+            out["ten_threshold"] = round(threshold, 4)
+            print(f"  TEN P(spoof) = {prob_spoof:.4f}  (threshold={threshold:.2f})")
+            if prob_spoof >= threshold:
                 out["is_suspicious"] = True
-                out["message"] += f" | TEN P(spoof)={prob_spoof:.4f}"
+                out["message"] += f" | TEN P(spoof)={prob_spoof:.4f} >= {threshold:.2f}"
     else:
         print("  TEN spoofing model : not available (Hawkes only)")
 

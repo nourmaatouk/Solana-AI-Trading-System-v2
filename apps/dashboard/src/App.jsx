@@ -6,33 +6,19 @@ import PaperTrading    from './components/PaperTrading.jsx'
 import Preferences     from './components/Preferences.jsx'
 import EquityChart     from './components/EquityChart.jsx'
 import SignalHistory   from './components/SignalHistory.jsx'
-import FutureWork      from './components/FutureWork.jsx'
-
 export default function App() {
   return (
     <div className="app">
       <Header />
 
       <main className="main-content">
-        {/* Full-width: System Health + Refresh button */}
         <SystemHealth />
-
-        {/* Two-column: Market Analysis | Trading Decision */}
         <MarketAnalysis />
         <TradingDecision />
-
-        {/* Two-column: Paper Trading metrics | Preferences */}
         <PaperTrading />
         <Preferences />
-
-        {/* Full-width: Equity curve */}
         <EquityChart />
-
-        {/* Full-width: Signal history table */}
         <SignalHistory />
-
-        {/* Full-width: Future Work (disabled) */}
-        <FutureWork />
       </main>
 
       <footer style={{

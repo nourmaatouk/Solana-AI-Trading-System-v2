@@ -250,9 +250,24 @@ class TENSpoofingDetector(nn.Module):
         delta_t: Optional[torch.Tensor] = None,
         src_key_padding_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        """Process inputs through the encoder, returning the pooled embedding."""
-        if delta_t is None and self.delta_t_feature_idx < x.shape[-1]:
-            delta_t = x[:, :, self.delta_t_feature_idx]
+        """Process inputs through the encoder, returning the pooled embedding.
+
+        Note: Adaptive Temporal PE (ATPE) activates only when
+        ``delta_t_feature_idx < d_input``.  With the 34-feature Kaggle LOB
+        schema and the default index of 43, ATPE is inactive and standard
+        sinusoidal PE is used instead.  To enable ATPE, either pass an
+        explicit ``delta_t`` tensor or add the delta_t column to the feature
+        extraction pipeline and set ``delta_t_feature_idx`` accordingly.
+        """
+        if delta_t is None:
+            if self.delta_t_feature_idx < x.shape[-1]:
+                delta_t = x[:, :, self.delta_t_feature_idx]
+            else:
+                logger.debug(
+                    "ATPE inactive: delta_t_feature_idx=%d >= d_input=%d; "
+                    "using standard sinusoidal PE",
+                    self.delta_t_feature_idx, x.shape[-1],
+                )
             
         embedded = self.input_projection(x)
         encoded = self.positional_encoding(embedded, delta_t)

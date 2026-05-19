@@ -314,13 +314,23 @@ def main() -> int:
 
     missing_cols = [c for c in feature_cols if c not in df.columns]
     if missing_cols:
-        print(f"  Missing feature columns: {missing_cols[:5]} ...")
-        return 1
+        # Fill missing columns (e.g. stale orderbook) with 0 — same degraded-mode
+        # behaviour used by the RL and XGBoost predictors.
+        df = pd.concat(
+            [df, pd.DataFrame(0.0, index=df.index, columns=missing_cols)],
+            axis=1,
+        )
+        print(f"  NOTE: {len(missing_cols)} feature columns missing (orderbook stale?), filled with 0")
 
     scaler    = joblib.load(SCALER_PATH)
     X_raw     = df[feature_cols].tail(1).to_numpy(dtype=np.float64)
     X_raw     = np.where(np.isfinite(X_raw), X_raw, 0.0)
     X_scaled  = scaler.transform(X_raw)
+
+    # DNN was trained with meta["in_dim"] features; feature_columns.json may have
+    # grown since then (e.g. new orderbook columns). Slice to the trained width.
+    dnn_in_dim = meta["in_dim"]
+    X_scaled_dnn = X_scaled[:, :dnn_in_dim] if X_scaled.shape[1] != dnn_in_dim else X_scaled
 
     latest_ts    = str(df["timestamp"].iloc[-1]) if "timestamp" in df.columns else "unknown"
     latest_close = float(df["close"].iloc[-1]) if "close" in df.columns else None
@@ -336,7 +346,7 @@ def main() -> int:
         p_xgb = float(xgb_sig.get("probability_up", 0.5))
 
     # ── DNN P(UP) ─────────────────────────────────────────────────────────────
-    p_dnn = dnn_proba(dnn_model, device, X_scaled)
+    p_dnn = dnn_proba(dnn_model, device, X_scaled_dnn)
 
     # ── TEN P(UP) — 32-candle sequence ───────────────────────────────────────
     if use_ten:
@@ -348,6 +358,9 @@ def main() -> int:
             ),
             columns=feature_cols,
         )
+        # Apply same width-guard for TEN
+        if df_feat_scaled.shape[1] != dnn_in_dim:
+            df_feat_scaled = df_feat_scaled.iloc[:, :dnn_in_dim]
         X_seq = _build_sequence(df_feat_scaled, seq_len)
         p_ten = ten_proba(ten_model, device, X_seq)
     else:
