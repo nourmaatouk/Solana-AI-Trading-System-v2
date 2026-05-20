@@ -19,6 +19,12 @@ ENV/
 # Node dependencies
 node_modules/
 
+# Build outputs — covered by the top-level `dist/` rule above;
+# listed here for discoverability when grepping for app paths.
+apps/*/dist/
+apps/*/*/dist/
+*.tsbuildinfo
+
 # Environment files — keep .env.example, never commit real secrets
 .env
 .env.local
