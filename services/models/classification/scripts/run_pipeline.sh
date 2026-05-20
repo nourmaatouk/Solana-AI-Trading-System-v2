@@ -5,8 +5,9 @@
 #   */15 * * * * /path/to/scripts/run_pipeline.sh >> /path/to/logs/cron.log 2>&1
 #
 # Flags forwarded to run_realtime_pipeline.py:
-#   --fusion        include DNN + TEN fusion signal
-#   --paper-trade   simulate trades from the signal
+#   --fusion           include DNN + TEN fusion signal
+#   --fusion-aggregate run multi-signal aggregator → last_fused_decision.json
+#   --paper-trade      simulate trades from the fused decision
 #
 # The orderbook collector (realtime_orderbook_collector.py) must be running
 # as a separate persistent process — start it with start_orderbook.sh.
@@ -50,6 +51,7 @@ cd "$CLASSIFICATION_DIR"
 
 "$PYTHON" "$PIPELINE" \
     --fusion \
+    --fusion-aggregate \
     --paper-trade \
     2>&1 | tee -a "$LOGFILE"
 

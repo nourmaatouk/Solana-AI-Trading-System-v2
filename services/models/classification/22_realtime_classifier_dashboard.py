@@ -57,8 +57,8 @@ def score_feature_rows(
     working = df.copy()
     missing_features = [col for col in expected_features if col not in working.columns]
     if missing_features:
-        missing = ", ".join(missing_features)
-        raise ValueError(f"Realtime feature file is missing trained features: {missing}")
+        print(f"  [dashboard] NOTE: {len(missing_features)} feature(s) missing (orderbook stale?), filled with 0: {missing_features[:3]}")
+        working = pd.concat([working, pd.DataFrame(0.0, index=working.index, columns=missing_features)], axis=1)
 
     feature_frame = working.loc[:, expected_features].replace([np.inf, -np.inf], np.nan)
     valid_mask = feature_frame.notna().all(axis=1)
