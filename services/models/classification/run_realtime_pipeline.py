@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -21,6 +22,10 @@ ORDERBOOK_STATUS_PATH   = REALTIME_DIR / "orderbook_status.json"
 SENTIMENT_STATUS_PATH   = REALTIME_DIR / "sentiment_status.json"
 DEFAULT_ORDERBOOK_MAX_AGE_MINUTES = 30
 DEFAULT_SENTIMENT_MAX_AGE_MINUTES = 30
+# Cap on retained realtime_pipeline_*.log files in LOG_DIR. Override via
+# PIPELINE_LOG_MAX_FILES env var. Cron runs every 15 min = ~96 logs/day;
+# 100 keeps roughly the last day plus a small buffer.
+PIPELINE_LOG_MAX_FILES = int(os.environ.get("PIPELINE_LOG_MAX_FILES", "100"))
 
 
 @dataclass(frozen=True)
@@ -106,6 +111,29 @@ def append_log(log_path: Path, text: str) -> None:
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with open(log_path, "a") as f:
         f.write(text)
+
+
+def rotate_pipeline_logs(log_dir: Path, keep: int = PIPELINE_LOG_MAX_FILES) -> int:
+    """Delete oldest realtime_pipeline_*.log files beyond `keep`. Returns count removed.
+
+    Called at the top of main() so the new log file is created after rotation
+    and is never a deletion candidate in its own run.
+    """
+    if keep <= 0 or not log_dir.exists():
+        return 0
+    files = sorted(log_dir.glob("realtime_pipeline_*.log"), key=lambda p: p.stat().st_mtime)
+    if len(files) <= keep:
+        return 0
+    stale = files[:-keep]
+    removed = 0
+    for f in stale:
+        try:
+            f.unlink()
+            removed += 1
+        except OSError:
+            # Best-effort cleanup; a locked or permission-denied file is not fatal.
+            pass
+    return removed
 
 
 def run_step(step: PipelineStep, timeout_seconds: int, dry_run: bool, log_path: Path) -> dict[str, Any]:
@@ -308,6 +336,12 @@ def main() -> int:
     args = parse_args()
     started_at = datetime.now(timezone.utc)
     run_id = started_at.strftime("%Y%m%dT%H%M%SZ")
+
+    # Cap historical log files BEFORE creating the new one.
+    removed_logs = rotate_pipeline_logs(LOG_DIR)
+    if removed_logs:
+        print(f"Rotated logs    : removed {removed_logs} old realtime_pipeline_*.log file(s)")
+
     log_path = LOG_DIR / f"realtime_pipeline_{run_id}.log"
     steps = build_steps(args)
 
