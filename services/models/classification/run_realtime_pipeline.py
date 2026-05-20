@@ -87,6 +87,11 @@ def build_steps(args: argparse.Namespace) -> list[PipelineStep]:
 
     if args.fusion_aggregate or args.paper_trade:
         steps.append(PipelineStep("spoofing_detect", BASE_DIR / "realtime_spoofing_detector.py", critical=False))
+        steps.append(PipelineStep(
+            "gnn_predict",
+            BASE_DIR.parent / "gnn" / "realtime_gnn_predictor.py",
+            critical=False,
+        ))
 
     if args.fusion_aggregate:
         steps.append(PipelineStep("fusion_aggregate", BASE_DIR / "realtime_fusion_aggregator.py", critical=False))

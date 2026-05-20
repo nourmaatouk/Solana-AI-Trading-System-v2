@@ -46,6 +46,7 @@ from fusion_aggregator import (                          # noqa: E402
 )
 from fusion_contracts import (                           # noqa: E402
     ClassificationSignal,
+    GNNSignal,
     SentimentSignal,
     SpoofingSignal,
 )
@@ -56,6 +57,7 @@ SIGNAL_PATH         = REALTIME_DIR / "last_signal.json"
 SPOOFING_PATH       = REALTIME_DIR / "spoofing_score.json"
 SENTIMENT_FEAT_PATH = REALTIME_DIR / "latest_features_with_sentiment.csv"
 RL_SIGNAL_PATH      = REALTIME_DIR / "last_rl_signal.json"
+GNN_SIGNAL_PATH     = REALTIME_DIR / "last_gnn_signal.json"
 OUTPUT_PATH         = REALTIME_DIR / "last_fused_decision.json"
 
 # ── RL weight ─────────────────────────────────────────────────────────────────
@@ -285,6 +287,29 @@ def _load_rl_signal() -> dict | None:
         return None
 
 
+def _load_gnn_signal() -> GNNSignal | None:
+    """Read last_gnn_signal.json; returns None if unavailable."""
+    if not GNN_SIGNAL_PATH.exists():
+        return None
+    try:
+        raw = json.loads(GNN_SIGNAL_PATH.read_text())
+        ts_str = raw.get("generated_at_utc", "")
+        from datetime import datetime, timezone
+        try:
+            ts = datetime.fromisoformat(ts_str)
+        except Exception:
+            ts = datetime.now(timezone.utc)
+        return GNNSignal(
+            timestamp=ts,
+            anomaly_score=float(raw.get("anomaly_score", 0.0)),
+            community_sentiment=float(raw.get("community_sentiment", 0.0)),
+            liquidity_stress=float(raw.get("liquidity_stress", 0.0)),
+        )
+    except Exception as exc:
+        print(f"  [fusion] WARNING: failed to parse last_gnn_signal.json: {exc}")
+        return None
+
+
 # ── main ─────────────────────────────────────────────────────────────────────
 
 def main() -> int:
@@ -296,6 +321,7 @@ def main() -> int:
     spoof_sig = _load_spoofing_signal()
     sent_sig  = _load_sentiment_signal()
     rl_sig    = _load_rl_signal()
+    gnn_sig   = _load_gnn_signal()
     cls_ctx   = _load_classification_context()
 
     if cls_sig is None and spoof_sig is None and sent_sig is None:
@@ -315,12 +341,14 @@ def main() -> int:
     print(f"  classification : {'ok' if cls_sig   else 'missing'}")
     print(f"  spoofing       : {'ok' if spoof_sig else 'missing'}")
     print(f"  sentiment      : {'ok' if sent_sig  else 'missing'}")
+    print(f"  gnn_signal     : {'ok (anomaly=' + str(round(gnn_sig.anomaly_score, 3)) + ')' if gnn_sig else 'missing'}")
     print(f"  rl_signal      : {'ok (' + rl_sig['signal'] + ')' if rl_sig else 'missing'}")
 
     decision = _AGGREGATOR.fuse(
         classification_signal=cls_sig,
         spoofing_signal=spoof_sig,
         sentiment_signal=sent_sig,
+        gnn_signal=gnn_sig,
     )
 
     # ── Blend RL signal into fused score ─────────────────────────────────────
@@ -366,6 +394,9 @@ def main() -> int:
         "classification_probability_down": cls_ctx.get("classification_probability_down"),
         "spoofing_confidence":       float(decision.spoofing_confidence),
         "sentiment_relevance":       float(decision.sentiment_relevance),
+        "gnn_anomaly_score":         round(gnn_sig.anomaly_score, 4) if gnn_sig else None,
+        "gnn_liquidity_stress":      round(gnn_sig.liquidity_stress, 4) if gnn_sig else None,
+        "gnn_community_sentiment":   round(gnn_sig.community_sentiment, 4) if gnn_sig else None,
         "rl_signal":                 rl_sig["signal"] if rl_sig else None,
         "rl_confidence":             rl_sig["confidence"] if rl_sig else None,
         "confidence_gate":           CONFIDENCE_THRESHOLD,
