@@ -23,12 +23,11 @@ AI-powered cryptocurrency trading system targeting SOL/USDT on Solana. The signa
 | Fusion aggregator | ✅ Working | XGB 40% / RL 30% / Sentiment 20% / Spoofing 10% |
 | Paper trader | ✅ Working | Reads `last_fused_decision.json` |
 | FastAPI backend | ✅ Working | Read-only monitoring endpoints |
-| React dashboard (apps/dashboard) | ✅ Working | Signal panel, paper trading metrics |
-| Node.js trading dashboard | ✅ Working | Live Binance WS, candlestick chart, order book |
+| Node.js trading dashboard | ✅ Working | Live Binance WS, candlestick chart, order book (apps/trading-dashboard) |
 | Binance WebSocket orderbook | ✅ Working | SOL/USDT L2, writes orderbook_features.csv |
 | CI pipeline | ✅ Working | `.github/workflows/ci.yml` |
 | Hawkes process realtime gate | ✅ Working | Branching-ratio spoofing filter |
-| ElizaOS agent orchestration | ⏳ Planned | Phase 5 — fusion_consumer.py exists, no orchestrator |
+| ElizaOS agent orchestration | ⏳ Planned | Phase 5 — no orchestrator yet (apps/agent/ is empty stub) |
 | Solana execution layer | ⏳ Planned | Phase 6 — Jupiter/Raydium/Jito |
 | On-chain connectors | ⏳ Planned | OpenBook DEX, Helius RPC |
 | Solana smart contracts | ⏳ Planned | Phase 6 — Anchor/Rust |
@@ -40,9 +39,9 @@ AI-powered cryptocurrency trading system targeting SOL/USDT on Solana. The signa
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│ Layer 6 (API/UI)       apps/api · apps/dashboard                 │
-│ FastAPI monitoring endpoints · React signal panel                 │
-│ Node.js live trading dashboard (apps/trading-dashboard)          │
+│ Layer 6 (API/UI)       apps/api · apps/trading-dashboard         │
+│ FastAPI monitoring endpoints                                      │
+│ Node.js live trading dashboard (TSX + Vite + Express proxy)      │
 └──────────────────────────────────┬───────────────────────────────┘
                                    │
 ┌──────────────────────────────────▼───────────────────────────────┐
@@ -81,9 +80,6 @@ uvicorn apps.api.main:app --port 8000
 # Start the Node.js live trading dashboard (separate terminal pair)
 cd apps/trading-dashboard/backend && npm install && npm run dev   # port 3001
 cd apps/trading-dashboard/frontend && npm install && npm run dev  # port 5174
-
-# Or start the lighter React dashboard (served via FastAPI)
-cd apps/dashboard && npm install && npm run dev  # port 5173
 ```
 
 ### Running individual models
@@ -130,29 +126,6 @@ requirements.txt — Dependencies
 tests/           — API tests
 ```
 
-#### `apps/dashboard/` ✅ Implemented (no SHAP yet)
-React/Vite single-page app served from FastAPI. Polls `/signal`, `/paper-trading`, `/system`, `/preferences`.
-
-```
-src/
-  App.jsx                  — Main layout
-  api.js                   — Fetch helpers
-  components/
-    Header.jsx             — Status bar
-    SystemHealth.jsx       — Orderbook / sentiment freshness
-    MarketAnalysis.jsx     — Price, XGBoost signal, spoofing gauge
-    TradingDecision.jsx    — BUY/SELL/HOLD card, fused score
-    PaperTrading.jsx       — Equity, Sharpe, win rate
-    Preferences.jsx        — Asset, risk level, thresholds
-    SignalHistory.jsx      — Signal log
-    EquityChart.jsx        — Paper trading equity curve
-    FutureWork.jsx         — Disabled placeholder cards
-    Heatmaps/              — [PLANNED] SHAP heatmaps
-    ShapExplainer/         — [PLANNED] SHAP explainability
-    LiveSignals/           — [PLANNED] WebSocket push signals
-  hooks/usePoll.js         — Polling hook
-```
-
 #### `apps/trading-dashboard/` ✅ Implemented
 Separate Node.js/Express backend + React/Vite frontend. Streams live Binance WebSocket data, overlays AI signals from FastAPI.
 
@@ -161,12 +134,11 @@ backend/   — Express :3001, proxies /api/ai/* to FastAPI, broadcasts WS to fro
 frontend/  — Vite :5174, candlestick chart, order book, watchlist, signal panel
 ```
 
-#### `apps/agent/` ⏳ Partial
-Only `fusion_consumer.py` exists — reads `last_fused_decision.json` and logs decisions. ElizaOS orchestration, plugins, memory, and reasoning layers are not built.
+#### `apps/agent/` ⏳ Empty stub
+Reserved for the ElizaOS orchestration layer (Phase 5). No code yet — orchestrator,
+plugins, memory, and reasoning are all planned.
 
 ```
-fusion_consumer.py     — Reads and logs fused decisions
-run_fusion_consumer.py — Entry point
 memory/                — [PLANNED] ChromaDB episodic memory (Phase 5)
 plugins/               — [PLANNED] Solana Agent Kit (Phase 6)
 reasoning/             — [PLANNED] Ollama Llama-3 reasoning (Phase 5)

@@ -3,6 +3,8 @@ import torch.nn.functional as F
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from typing import Dict, Optional
 
+from src.models.constants import FINBERT_MODEL_NAME
+
 
 class FinBertSentimentAnalyzer:
     """
@@ -11,7 +13,7 @@ class FinBertSentimentAnalyzer:
     Automatically uses CUDA if available, falling back to CPU.
     """
 
-    def __init__(self, model_name: str = "ProsusAI/finbert"):
+    def __init__(self, model_name: str = FINBERT_MODEL_NAME):
         # ProsusAI/finbert class labels mapping natively:
         # 0 -> positive, 1 -> negative, 2 -> neutral
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

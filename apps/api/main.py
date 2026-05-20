@@ -44,19 +44,13 @@ _FUSION_SRC_DIR     = REPO_ROOT / "services" / "models" / "fusion" / "src"
 for _p in (_CLASSIFICATION_DIR, _FUSION_SRC_DIR):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
-try:
-    from config import CONFIDENCE_THRESHOLD, SIGNAL_STALE_MINUTES, SPOOFING_MAX_AGE_MIN, SYMBOL  # noqa: F401
-except ImportError:
-    _log.warning("classification config import failed — using hardcoded fallback values")
-    CONFIDENCE_THRESHOLD  = 0.69
-    SIGNAL_STALE_MINUTES  = 20
-    SPOOFING_MAX_AGE_MIN  = 30
-    SYMBOL                = "SOL/USDT"
-try:
-    from fusion_aggregator import SPOOFING_SEVERITY_HIGH  # noqa: F401
-except ImportError:
-    _log.warning("fusion_aggregator import failed — using hardcoded SPOOFING_SEVERITY_HIGH=0.6")
-    SPOOFING_SEVERITY_HIGH = 0.6
+
+# Import config from the canonical source. If these fail at startup something
+# is genuinely broken — fail loudly rather than silently masking the issue with
+# hardcoded fallbacks that will drift from config.py.
+from config import CONFIDENCE_THRESHOLD, SIGNAL_STALE_MINUTES, SYMBOL
+from fusion_aggregator import SPOOFING_SEVERITY_HIGH
+
 DASHBOARD_DIST = REPO_ROOT / "apps" / "trading-dashboard" / "frontend" / "dist"
 
 _PATHS = {
@@ -246,6 +240,9 @@ def deep_health() -> dict[str, Any]:
     else:
         checks["rl_signal"] = {"ok": None, "note": "no rl signal — run train_ppo.py first"}
 
+    # Tri-state ok semantics: True = healthy, False = unhealthy, None = not
+    # applicable (e.g. Timescale not configured, RL model not trained). Only
+    # explicit False degrades the overall verdict.
     overall = all(v.get("ok") is not False for v in checks.values())
     return {
         "healthy": overall,

@@ -7,12 +7,10 @@ User-facing applications for the Solana AI Trading System.
 | Directory | Status | Description |
 |-----------|--------|-------------|
 | `api/` | ✅ Implemented | FastAPI backend — read-only signal and status endpoints |
-| `dashboard/` | ✅ Implemented | React/Vite SPA — signal panel, paper trading metrics |
 | `trading-dashboard/` | ✅ Implemented | Node.js + React — live Binance WS, candlestick chart, order book |
-| `agent/` | ⏳ Partial | Only `fusion_consumer.py` exists; ElizaOS orchestration not built |
+| `agent/` | ⏳ Empty stub | Reserved for the ElizaOS orchestration layer (Phase 5); no code yet |
 
 ## What is not implemented
 
-- **SHAP visualizations** — the `Heatmaps/`, `ShapExplainer/`, and `LiveSignals/` component folders are stubs with no code.
-- **Agent autonomy** — `apps/agent/` has no orchestrator, no plugin system, no memory layer, and no reasoning engine. The only working file is `fusion_consumer.py`.
-- **WebSocket push** — dashboards use polling (15–30 s), not server-push WebSocket.
+- **Agent autonomy** — `apps/agent/` has no orchestrator, no plugin system, no memory layer, and no reasoning engine. Planned for Phase 5.
+- **WebSocket push for signals** — the trading-dashboard has live market WS from Binance/OKX, but the AI signal layer still polls (10–30 s).

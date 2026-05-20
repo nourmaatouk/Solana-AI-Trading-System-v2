@@ -110,8 +110,16 @@ def orderbook_matters(model: xgb.XGBClassifier, expected_features: list[str]) ->
 
 def latest_orderbook_unavailable(df: pd.DataFrame, expected_features: list[str],
                                   model: xgb.XGBClassifier | None = None) -> bool:
-    if not orderbook_matters(model, expected_features) if model is not None \
-            else not any(col in expected_features for col in ORDERBOOK_FEATURES):
+    # Determine whether the orderbook gate is relevant for this model+feature set.
+    # When a model is supplied we can check actual feature importance; otherwise we
+    # fall back to "is any orderbook feature in the expected set?" — the same
+    # symmetric question, just without the importance weighting.
+    if model is None:
+        orderbook_relevant = any(col in expected_features for col in ORDERBOOK_FEATURES)
+    else:
+        orderbook_relevant = orderbook_matters(model, expected_features)
+
+    if not orderbook_relevant:
         return False
     if "orderbook_data_available" not in df.columns:
         return False
