@@ -4,6 +4,10 @@ import WebSocket, { WebSocketServer } from 'ws';
 
 import { SIGNAL_POLL_INTERVAL_MS } from '../config';
 
+// NOTE: This poller still reads last_fused_decision.json from disk for WS
+// fan-out. The audit flagged this as a follow-up to Phase 2 — switching it
+// to fetch from FastAPI removes the last bit of filesystem coupling in the
+// Node backend. Not done here to keep Phase 2 scope tight.
 const REALTIME_DIR = process.env.REALTIME_DIR
   ?? path.join(process.cwd(), 'services/models/classification/data/realtime');
 
@@ -44,6 +48,9 @@ function readJson<T>(filename: string): T | null {
 export class SignalPoller {
   private wss: WebSocketServer;
   private interval: NodeJS.Timeout | null = null;
+  // Cached last fused decision — delivered to new WS clients on connect
+  // (market.socket.ts) so they see the latest signal without waiting for the
+  // next poll cycle.
   private lastSignal: FusedDecision | null = null;
 
   constructor(wss: WebSocketServer) {
@@ -82,17 +89,5 @@ export class SignalPoller {
 
   getLatestSignal(): FusedDecision | null {
     return this.lastSignal;
-  }
-
-  readFusion(): FusedDecision | null {
-    return readJson<FusedDecision>('last_fused_decision.json');
-  }
-
-  readSpoofing(): Record<string, unknown> | null {
-    return readJson<Record<string, unknown>>('spoofing_score.json');
-  }
-
-  readSentiment(): Record<string, unknown> | null {
-    return readJson<Record<string, unknown>>('sentiment_status.json');
   }
 }
