@@ -150,6 +150,12 @@ SIGNAL_STALE_MINUTES = 20
 FEE_RT        = 0.001    # round-trip fee (entry + exit) as a fraction of notional
 SLIPPAGE_PCT  = 0.0005   # additional round-trip market-impact estimate (5 bps)
 
+# -- Guardian safety validation -----------------------------------------------
+# Standalone gate that validates fused decisions before paper-trader entries.
+GUARDIAN_SPOOFING_THRESHOLD = float(os.environ.get("GUARDIAN_SPOOFING_THRESHOLD", "0.60"))
+GUARDIAN_SLIPPAGE_THRESHOLD = float(os.environ.get("GUARDIAN_SLIPPAGE_THRESHOLD", "0.005"))
+GUARDIAN_DAILY_LOSS_LIMIT   = float(os.environ.get("GUARDIAN_DAILY_LOSS_LIMIT", "0.03"))
+
 # ── Fusion predictor ──────────────────────────────────────────────────────────
 # Maximum absolute contribution of the sentiment score to the fused signal.
 # Caps FinBERT's influence so it can nudge but not override the XGBoost signal.

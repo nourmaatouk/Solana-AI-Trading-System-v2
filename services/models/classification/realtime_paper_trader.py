@@ -29,6 +29,7 @@ State is persisted in data/realtime/paper_trading_state*.json between runs.
 from __future__ import annotations
 
 import json
+import importlib.util
 import os
 import sys
 from datetime import datetime, timedelta, timezone
@@ -48,7 +49,17 @@ from config import (
     STOP_LOSS_PCT,
     SYMBOL,
     TAKE_PROFIT_PCT,
+    GUARDIAN_DAILY_LOSS_LIMIT,
 )
+from guardian_agent import GuardianAgent, GuardianInput, format_guardian_log
+
+# Load fusion WEIGHT_RL without importing the classification config by accident.
+_FUSION_CONFIG_PATH = Path(__file__).resolve().parents[1] / "fusion" / "config.py"
+_fc_spec = importlib.util.spec_from_file_location("fusion.config", _FUSION_CONFIG_PATH)
+_fc_mod = importlib.util.module_from_spec(_fc_spec)
+_fc_spec.loader.exec_module(_fc_mod)
+WEIGHT_RL = float(getattr(_fc_mod, "WEIGHT_RL", 0.0))
+_GUARDIAN = GuardianAgent()
 
 # XGBoost-only signal (always present after the predictor step)
 XGB_SIGNAL_PATH    = REALTIME_DIR / "last_signal.json"
@@ -114,6 +125,15 @@ def _parse_datetime(value) -> datetime | None:
     return dt.astimezone(timezone.utc)
 
 
+def _float_or_none(value) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _classification_context() -> dict:
     """Return price/timestamp context from the latest XGBoost signal if present."""
     if not XGB_SIGNAL_PATH.exists():
@@ -151,6 +171,20 @@ def _direction_to_action(direction: str) -> str:
     return "HOLD"
 
 
+def _normalise_rl_action(value) -> str | None:
+    """Return PPO action only when RL is enabled in fusion."""
+    if WEIGHT_RL <= 0.0 or value is None:
+        return None
+    raw = str(value).upper()
+    if raw in ("BUY", "UP"):
+        return "BUY"
+    if raw in ("SELL", "DOWN"):
+        return "SELL"
+    if raw in ("HOLD", "NEUTRAL"):
+        return "HOLD"
+    return None
+
+
 def _normalise_fused_decision(raw: dict) -> dict:
     """Adapt last_fused_decision.json into the paper-trader signal shape."""
     ctx = _classification_context()
@@ -174,6 +208,14 @@ def _normalise_fused_decision(raw: dict) -> dict:
         "reason": reason,
         "probability_up": float(probability_up),
         "score": score,
+        "fused_score": score,
+        "confidence": raw.get("classification_confidence", raw.get("confidence")),
+        "classification_probability_up": raw.get("classification_probability_up", probability_up),
+        "sentiment_score": raw.get("sentiment_score"),
+        "spoofing_confidence": raw.get("spoofing_confidence"),
+        "gnn_risk": raw.get("gnn_risk", raw.get("gnn_anomaly_score")),
+        "ppo_action": _normalise_rl_action(raw.get("rl_signal")),
+        "fusion_action": action,
         "risk_level": raw.get("risk_level", "UNKNOWN"),
         "latest_timestamp": (
             raw.get("latest_timestamp")
@@ -193,14 +235,24 @@ def _normalise_probability_signal(raw: dict, *, source_contract: str) -> dict:
     """Adapt legacy probability signals into the same shape as fused decisions."""
     signal = str(raw.get("signal", "NEUTRAL")).upper()
     probability_up = float(raw.get("probability_up", 0.5))
+    confidence = max(probability_up, 1.0 - probability_up)
+    action = _direction_to_action(signal)
     return {
         "status": raw.get("status"),
         "asset": raw.get("asset", SYMBOL),
         "signal": signal,
-        "action": _direction_to_action(signal),
+        "action": action,
         "reason": raw.get("reason", source_contract),
         "probability_up": probability_up,
         "score": raw.get("fused_score"),
+        "fused_score": raw.get("fused_score"),
+        "confidence": confidence,
+        "classification_probability_up": probability_up,
+        "sentiment_score": None,
+        "spoofing_confidence": None,
+        "gnn_risk": None,
+        "ppo_action": None,
+        "fusion_action": action,
         "risk_level": raw.get("risk_level", "UNKNOWN"),
         "latest_timestamp": raw.get("latest_timestamp") or raw.get("latest_utc"),
         "latest_close": raw.get("latest_close"),
@@ -214,6 +266,60 @@ def _signal_age_minutes(timestamp_raw, now_utc: datetime) -> float | None:
     if ts is None:
         return None
     return (now_utc - ts).total_seconds() / 60.0
+
+
+def _current_position_context(state: dict, current_close: float) -> tuple[str, float]:
+    pos = state.get("open_position")
+    if pos is None:
+        return "FLAT", 0.0
+
+    direction = str(pos.get("direction", "")).upper()
+    if direction == "UP":
+        position = "LONG"
+    elif direction == "DOWN":
+        position = "SHORT"
+    else:
+        position = "FLAT"
+
+    try:
+        entry = float(pos.get("entry_price", 0.0))
+        if entry <= 0.0:
+            return position, 0.0
+        raw = (current_close - entry) / entry
+        unrealized = raw if direction == "UP" else -raw
+        return position, float(unrealized)
+    except Exception:
+        return position, 0.0
+
+
+def _daily_loss_from_state(state: dict, now_utc: datetime) -> float:
+    """Return today's realised loss as a positive fraction of equity."""
+    loss = 0.0
+    for trade in state.get("trade_log", []):
+        exit_dt = _parse_datetime(trade.get("exit_time"))
+        if exit_dt is None or exit_dt.date() != now_utc.date():
+            continue
+        try:
+            net_pnl = float(trade.get("net_pnl", 0.0))
+        except (TypeError, ValueError):
+            continue
+        if net_pnl < 0.0:
+            loss += -net_pnl
+    return float(loss)
+
+
+def _update_guardian_distribution(state: dict, guardian_result) -> None:
+    counts = state.setdefault(
+        "guardian_action_distribution",
+        {"ALLOW": 0, "BLOCK": 0, "FORCE_HOLD": 0},
+    )
+    for key in ("ALLOW", "BLOCK", "FORCE_HOLD"):
+        counts.setdefault(key, 0)
+    counts[guardian_result.decision] = int(counts.get(guardian_result.decision, 0)) + 1
+
+    if guardian_result.decision == "BLOCK":
+        reasons = state.setdefault("guardian_block_reasons", {})
+        reasons[guardian_result.reason] = int(reasons.get(guardian_result.reason, 0)) + 1
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -518,6 +624,36 @@ def main() -> int:
             print(f"    Exit reason   : {reason}")
             print(f"    Equity        : {state['equity']:.6f}")
 
+    current_position, unrealized_pnl = _current_position_context(state, current_close)
+    guardian_input = GuardianInput(
+        fused_score=_float_or_none(score) or 0.0,
+        risk_level=risk_level,
+        confidence=_float_or_none(sig.get("confidence")),
+        classification_probability_up=_float_or_none(
+            sig.get("classification_probability_up", prob_up)
+        ),
+        sentiment_score=_float_or_none(sig.get("sentiment_score")),
+        spoofing_confidence=_float_or_none(sig.get("spoofing_confidence")),
+        gnn_risk=_float_or_none(sig.get("gnn_risk")),
+        ppo_action=sig.get("ppo_action"),
+        fusion_action=sig.get("fusion_action", action),
+        current_position=current_position,
+        unrealized_pnl=unrealized_pnl,
+        daily_loss=_daily_loss_from_state(state, now_utc),
+        daily_loss_limit=GUARDIAN_DAILY_LOSS_LIMIT,
+        estimated_slippage=SLIPPAGE_PCT,
+    )
+    guardian_result = _GUARDIAN.validate(guardian_input)
+    _update_guardian_distribution(state, guardian_result)
+    print(format_guardian_log(guardian_result, guardian_input))
+
+    if guardian_result.decision in ("BLOCK", "FORCE_HOLD"):
+        guardian_reason = f"guardian: {guardian_result.reason}"
+        entry_block_reason = (
+            f"{entry_block_reason}; {guardian_reason}"
+            if entry_block_reason else guardian_reason
+        )
+
     # ── 4. Open new position if signal fires ──────────────────────────────────
     spoofed = _is_market_spoofed()
     if spoofed:
@@ -528,6 +664,7 @@ def main() -> int:
         and signal in ("UP", "DOWN")
         and not spoofed
         and entry_block_reason is None
+        and guardian_result.decision == "ALLOW"
     ):
         size          = min(_position_size(prob_up, signal, gate), _risk_cap())
         entry_price   = current_close
@@ -598,6 +735,7 @@ def main() -> int:
         "open_position":       state["open_position"],
         "last_signal":         signal,
         "last_action":         action,
+        "guardian":            guardian_result.to_dict(),
     }
     with open(log_path, "w") as f:
         json.dump(log, f, indent=2)
@@ -615,6 +753,8 @@ def main() -> int:
         "win_rate":     metrics.get("win_rate"),
         "sharpe":       metrics.get("sharpe"),
         "latest_close": sig.get("latest_close"),
+        "guardian_decision": guardian_result.decision,
+        "guardian_reason": guardian_result.reason,
     }
     try:
         history = json.loads(HISTORY_PATH.read_text()) if HISTORY_PATH.exists() else []
