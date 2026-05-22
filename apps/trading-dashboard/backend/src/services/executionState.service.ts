@@ -15,19 +15,26 @@ import path from 'path';
 import type { ExecutionWorkflowResult } from '@trading/execution';
 import { executionEvents, type ExecutionHistoryEntry } from './executionEvents';
 
-const REALTIME_DIR = path.resolve(
-  __dirname,
-  '..',
-  '..',
-  '..',
-  '..',
-  '..',
-  'services',
-  'models',
-  'classification',
-  'data',
-  'realtime',
-);
+/**
+ * Directory where every persistent execution-state file lives. Mirrors the
+ * fallback used by aiSignal.service.ts so the Node backend and the signal
+ * poller agree on the location. Override REALTIME_DIR in tests to redirect
+ * all reads/writes to a temp directory.
+ */
+const REALTIME_DIR = process.env.REALTIME_DIR
+  ?? path.resolve(
+    __dirname,
+    '..',
+    '..',
+    '..',
+    '..',
+    '..',
+    'services',
+    'models',
+    'classification',
+    'data',
+    'realtime',
+  );
 
 const EMERGENCY_STOP_PATH  = path.join(REALTIME_DIR, 'emergency_stop.json');
 const LAST_EXECUTION_PATH  = path.join(REALTIME_DIR, 'last_execution.json');

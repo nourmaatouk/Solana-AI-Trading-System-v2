@@ -11,7 +11,13 @@ The project is a three-piece stack:
 - `apps/trading-dashboard/backend` — Express + WebSocket server on port `3001`. Serves `/api/*` routes and (in production) the built frontend at `/`.
 - `apps/trading-dashboard/frontend` — Vite + React. Dev server on `:5173` proxies `/api/*` and `/ws` to the backend.
 
-A Python FastAPI service at `:8000` is referenced by `PYTHON_API` for live signal data. The dashboard runs without it — pages render, state files work, Guardian-policy reads work — but `POST /api/execution/validate` and `/execute` return `{error: "validation_failed", detail: "fetch failed"}` until it's up.
+A Python FastAPI service at `:8000` is referenced by `PYTHON_API` for live signal data. The dashboard runs without it — pages render, state files work, Guardian-policy reads work — but `POST /api/execution/validate` and `/execute` return `{error: "validation_failed", detail: "fetch failed"}` until it's up. Launch it with:
+
+```bash
+.venv/bin/uvicorn apps.api.main:app --port 8000 --host 127.0.0.1
+```
+
+Or if you only need the dashboard surface (no `/validate` / `/execute`), skip it.
 
 ## Launch sequence (verified)
 
@@ -114,11 +120,23 @@ These write to `services/models/classification/data/realtime/{user_risk_level,ma
 
 Invalid input is rejected with HTTP 400 + a zod issue list (e.g. `{"level":"EXTREME"}` → 400, `{"amount_sol":50}` → 400). If those return 500 or pass, something has regressed in the route validation.
 
+## Running tests
+
+```bash
+cd services/execution && npm test                          # 63 tests
+cd apps/trading-dashboard/backend && npm test              # 9 tests (uses vitest.config.ts alias)
+```
+
+`backend/npm test` exercises the SignalPoller -> AutoExecutor wire end-to-end
+against a temp REALTIME_DIR. Set REALTIME_DIR in env to point any state-file
+reads (`readUserRiskLevel`, `readDailyVolume`, etc.) at a different directory.
+
 ## Shutdown
 
 ```bash
 pkill -f "ts-node-dev.*server.ts"
 pkill -f "vite"
+pkill -f "uvicorn.*apps.api"
 ```
 
 `pkill` may exit 144 — that's fine, it just means the process was killed.
