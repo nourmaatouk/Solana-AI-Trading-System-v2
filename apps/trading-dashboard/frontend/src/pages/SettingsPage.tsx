@@ -1,30 +1,16 @@
 import { useState } from 'react';
-
-interface Settings {
-  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
-  tradingMode: 'Manual' | 'Semi-Auto' | 'Auto';
-  signalPollInterval: number;
-  showSpoofingAlerts: boolean;
-  priceDisplayDecimals: number;
-}
-
-const DEFAULTS: Settings = {
-  riskLevel: 'MEDIUM',
-  tradingMode: 'Manual',
-  signalPollInterval: 60,
-  showSpoofingAlerts: true,
-  priceDisplayDecimals: 2,
-};
-
-const STORAGE_KEY = 'solvanta_settings';
-
-function loadSettings(): Settings {
-  try {
-    return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') } as Settings;
-  } catch {
-    return DEFAULTS;
-  }
-}
+import {
+  loadSettings,
+  SETTINGS_DEFAULTS,
+  SETTINGS_KEY,
+  type Settings,
+} from '../hooks/useSettings';
+import {
+  enableAutoExecute,
+  disableAutoExecute,
+  setBackendUserRiskLevel,
+  setBackendMaxTradeSize,
+} from '../services/executionApi';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -72,9 +58,7 @@ function Pills<T extends string>({ options, value, onChange, colorFn }: {
         const active = value === o;
         const custom = active ? colorFn?.(o) : undefined;
         return (
-          <button
-            key={o}
-            onClick={() => onChange(o)}
+          <button key={o} onClick={() => onChange(o)}
             className="px-2.5 py-1 rounded-lg text-xs font-medium transition-colors border"
             style={active
               ? custom
@@ -94,22 +78,46 @@ function Pills<T extends string>({ options, value, onChange, colorFn }: {
 export function SettingsPage() {
   const [settings, setSettings] = useState<Settings>(loadSettings);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const update = <K extends keyof Settings>(key: K, value: Settings[K]) => {
     setSettings((prev) => ({ ...prev, [key]: value }));
     setSaved(false);
+    setSaveError(null);
   };
 
-  const handleSave = () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  const handleSave = async () => {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    // Notify same-tab consumers (e.g. ExecutionPanel) immediately.
+    window.dispatchEvent(new Event('solvanta:settings'));
+
+    // Sync execution-layer state with the backend so the AutoExecutor enforces
+    // the same trading mode, risk preference, and per-trade size the user
+    // picked here.
+    try {
+      await Promise.all([
+        setBackendUserRiskLevel(settings.riskLevel),
+        setBackendMaxTradeSize(settings.maxTradeSizeSol),
+      ]);
+      if (settings.tradingMode === 'Auto') {
+        await enableAutoExecute();
+      } else {
+        await disableAutoExecute();
+      }
+      setSaved(true);
+      setSaveError(null);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err) {
+      setSaveError(`Settings saved locally but backend sync failed: ${(err as Error).message}`);
+    }
   };
 
   const handleReset = () => {
-    setSettings(DEFAULTS);
-    localStorage.removeItem(STORAGE_KEY);
+    setSettings(SETTINGS_DEFAULTS);
+    localStorage.removeItem(SETTINGS_KEY);
+    window.dispatchEvent(new Event('solvanta:settings'));
     setSaved(false);
+    setSaveError(null);
   };
 
   return (
@@ -134,6 +142,59 @@ export function SettingsPage() {
           </div>
         </div>
 
+        {saveError && (
+          <div className="px-4 py-3 text-xs rounded-xl"
+            style={{ background: 'var(--red-bg)', border: '1px solid var(--red-bd)', color: 'var(--red)' }}>
+            {saveError}
+          </div>
+        )}
+
+        <Section title="Execution">
+          <Row
+            label="Max Trade Size"
+            desc="SOL amount cap per trade. Must be ≤ the Guardian's MAX_TRADE_SIZE_SOL env limit."
+          >
+            <div className="flex items-center gap-1.5">
+              <input
+                type="number"
+                step={0.001}
+                min={0.001}
+                max={10}
+                value={settings.maxTradeSizeSol}
+                onChange={(e) => {
+                  const v = parseFloat(e.target.value);
+                  if (Number.isFinite(v) && v > 0) update('maxTradeSizeSol', v);
+                }}
+                className="w-24 px-2.5 py-1.5 rounded-lg text-sm font-mono border focus:outline-none"
+                style={{ background: 'var(--bg-sub)', color: 'var(--text-1)', borderColor: 'var(--border)' }}
+              />
+              <span className="text-xs" style={{ color: 'var(--text-3)' }}>SOL</span>
+            </div>
+          </Row>
+          <Row
+            label="Trading Mode"
+            desc="Auto fires trades automatically when the AI issues a BUY/SELL signal above the confidence threshold."
+          >
+            <Pills
+              options={['Manual', 'Semi-Auto', 'Auto'] as const}
+              value={settings.tradingMode}
+              onChange={(v) => update('tradingMode', v)}
+              colorFn={(v) =>
+                v === 'Auto'
+                  ? { color: 'var(--accent)', bg: 'var(--accent-bg)', border: 'var(--accent-bd)' }
+                  : { color: 'var(--text-2)', bg: 'transparent', border: 'var(--border)' }
+              }
+            />
+          </Row>
+          {settings.tradingMode === 'Auto' && (
+            <div className="px-3 py-2 rounded-lg text-xs"
+              style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent-bd)', color: 'var(--accent)' }}>
+              Auto mode: every BUY/SELL signal above the confidence threshold will execute automatically.
+              Guardian rules and emergency stop remain active at all times.
+            </div>
+          )}
+        </Section>
+
         <Section title="Trading Defaults">
           <Row label="Default Risk Level" desc="Pre-selected risk when opening the trade panel">
             <Pills
@@ -145,13 +206,6 @@ export function SettingsPage() {
                 : v === 'MEDIUM' ? { color: 'var(--accent)', bg: 'var(--accent-bg)', border: 'var(--accent-bd)' }
                 :                  { color: 'var(--red)',    bg: 'var(--red-bg)',    border: 'var(--red-bd)'    }
               }
-            />
-          </Row>
-          <Row label="Default Trading Mode" desc="Manual requires you to confirm every trade">
-            <Pills
-              options={['Manual', 'Semi-Auto', 'Auto'] as const}
-              value={settings.tradingMode}
-              onChange={(v) => update('tradingMode', v)}
             />
           </Row>
         </Section>
@@ -196,17 +250,19 @@ export function SettingsPage() {
               ['Stack',       'React · Node.js · FastAPI · XGBoost'],
               ['Data source', 'Binance WebSocket'],
               ['AI models',   'XGBoost + FinBERT + TEN-GNN'],
-              ['Execution',   'Paper trading only'],
+              ['Execution',   'Guardian + Jupiter v6'],
             ].map(([name, value]) => (
               <div key={name} className="flex justify-between">
                 <span style={{ color: 'var(--text-3)' }}>{name}</span>
-                <span className="font-mono" style={{ color: name === 'Execution' ? 'var(--accent)' : 'var(--text-1)' }}>{value}</span>
+                <span className="font-mono" style={{ color: 'var(--text-1)' }}>{value}</span>
               </div>
             ))}
           </div>
         </Section>
 
-        <p className="text-xs text-center" style={{ color: 'var(--text-3)' }}>Settings are stored in localStorage and apply on next page load.</p>
+        <p className="text-xs text-center" style={{ color: 'var(--text-3)' }}>
+          Settings are stored in localStorage. Save syncs the trading mode with the backend.
+        </p>
       </div>
     </div>
   );
