@@ -1,0 +1,30 @@
+{
+  "name": "@trading/execution",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Agentic execution layer — Guardian safety gate + Solana Agent Kit v2 + ElizaOS orchestrator. Sits between the AI pipeline (Python) and Solana on-chain execution. The deterministic Guardian is the only authority for approving transactions; the LLM is never on the critical path.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.95.0",
+    "bs58": "^6.0.0",
+    "node-fetch": "^3.3.2",
+    "zod": "^3.23.0"
+  },
+  "optionalDependencies": {
+    "solana-agent-kit": "^2.0.0",
+    "@solana-agent-kit/plugin-token": "^2.0.0",
+    "@elizaos/core": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.0",
+    "typescript": "^5.4.0",
+    "vitest": "^2.1.0"
+  }
+}
