@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useTradingStore } from '../store';
+import { NEUTRAL_IMBALANCE_PCT, ORDERBOOK_WALL_MULTIPLIER } from '../config';
 
 export interface OrderBookLevel {
   price: number;
@@ -31,7 +32,7 @@ export function useOrderBook(levels = 15): OrderBookData {
         spreadPct: 0,
         bidTotalVolume: 0,
         askTotalVolume: 0,
-        imbalancePct: 50,
+        imbalancePct: NEUTRAL_IMBALANCE_PCT,
       };
     }
 
@@ -46,7 +47,7 @@ export function useOrderBook(levels = 15): OrderBookData {
       .sort((a, b) => a.price - b.price)
       .slice(0, levels);
 
-    // Median size for liquidity wall detection (wall = size > 3× median)
+    // Median size for liquidity wall detection.
     const medianOf = (arr: number[]) => {
       if (arr.length === 0) return 0;
       const sorted = [...arr].sort((a, b) => a - b);
@@ -76,13 +77,13 @@ export function useOrderBook(levels = 15): OrderBookData {
     const bids: OrderBookLevel[] = bidsWithTotal.map((b) => ({
       ...b,
       depthPct: (b.total / maxTotal) * 100,
-      isWall: medianBidSize > 0 && b.size > 3 * medianBidSize,
+      isWall: medianBidSize > 0 && b.size > ORDERBOOK_WALL_MULTIPLIER * medianBidSize,
     }));
 
     const asks: OrderBookLevel[] = asksWithTotal.map((a) => ({
       ...a,
       depthPct: (a.total / maxTotal) * 100,
-      isWall: medianAskSize > 0 && a.size > 3 * medianAskSize,
+      isWall: medianAskSize > 0 && a.size > ORDERBOOK_WALL_MULTIPLIER * medianAskSize,
     }));
 
     const bestBid = bids[0]?.price ?? 0;
@@ -93,7 +94,7 @@ export function useOrderBook(levels = 15): OrderBookData {
     const bidTotalVolume = depth.bids.reduce((sum, [, s]) => sum + parseFloat(s), 0);
     const askTotalVolume = depth.asks.reduce((sum, [, s]) => sum + parseFloat(s), 0);
     const totalVolume = bidTotalVolume + askTotalVolume;
-    const imbalancePct = totalVolume > 0 ? (bidTotalVolume / totalVolume) * 100 : 50;
+    const imbalancePct = totalVolume > 0 ? (bidTotalVolume / totalVolume) * 100 : NEUTRAL_IMBALANCE_PCT;
 
     return { bids, asks, spread, spreadPct, bidTotalVolume, askTotalVolume, imbalancePct };
   }, [depth, levels]);

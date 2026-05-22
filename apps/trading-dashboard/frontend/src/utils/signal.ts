@@ -1,9 +1,4 @@
-/** Minutes after which a signal is considered stale — matches SIGNAL_STALE_MINUTES in main.py */
-export const SIGNAL_STALE_MINUTES = 20;
-
-/** Spoofing thresholds — must match SPOOFING_SEVERITY_HIGH/MEDIUM in fusion/config.py */
-export const SPOOFING_HIGH   = 0.6;
-export const SPOOFING_MEDIUM = 0.3;
+export { SIGNAL_STALE_MINUTES, SPOOFING_HIGH, SPOOFING_MEDIUM } from '../config';
 
 /**
  * Extract a sentiment label from the FinBERT reasoning string.

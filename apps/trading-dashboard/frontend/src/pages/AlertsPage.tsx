@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTradingStore } from '../store';
 import { DEFAULT_CONFIDENCE_GATE } from '../config';
+import { parseMarketSymbol } from '../utils/symbol';
 
 interface Alert {
   id: string;
@@ -25,16 +26,10 @@ function saveAlerts(alerts: Alert[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(alerts));
 }
 
-function parseSymbol(raw: string) {
-  if (raw.endsWith('USDT')) return { base: raw.slice(0, -4), quote: 'USDT' };
-  if (raw.endsWith('BTC')) return { base: raw.slice(0, -3), quote: 'BTC' };
-  return { base: raw, quote: '' };
-}
-
 export function AlertsPage() {
   const ticker = useTradingStore((s) => s.ticker);
   const selectedSymbol = useTradingStore((s) => s.selectedSymbol);
-  const { base, quote } = parseSymbol(selectedSymbol);
+  const { base, quote } = parseMarketSymbol(selectedSymbol);
   const [alerts, setAlerts] = useState<Alert[]>(loadAlerts);
   const [type, setType] = useState<'above' | 'below'>('above');
   const [priceInput, setPriceInput] = useState('');

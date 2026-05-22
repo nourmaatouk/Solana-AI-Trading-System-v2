@@ -1,19 +1,14 @@
 import { useState } from 'react';
 import { triggerSignal, executePaperTrade, stopScheduler, resumeScheduler } from '../services/api';
 import { useTradingStore } from '../store';
-
-function parseSymbol(raw: string) {
-  if (raw.endsWith('USDT')) return { base: raw.slice(0, -4), quote: 'USDT' };
-  if (raw.endsWith('BTC'))  return { base: raw.slice(0, -3),  quote: 'BTC' };
-  return { base: raw, quote: '' };
-}
+import { parseMarketSymbol } from '../utils/symbol';
 
 type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';
 
 export function TradingControls() {
   const signal = useTradingStore((s) => s.signal);
   const selectedSymbol = useTradingStore((s) => s.selectedSymbol);
-  const { base, quote } = parseSymbol(selectedSymbol);
+  const { base, quote } = parseMarketSymbol(selectedSymbol);
 
   const [riskLevel, setRiskLevel] = useState<RiskLevel>('MEDIUM');
   const [generating, setGenerating] = useState(false);

@@ -1,6 +1,22 @@
 import { create } from 'zustand';
 import type { TickerData, KlineData, TradeData, DepthData, WatchlistItem, AISignalData } from '../types';
-import { ACTIVE_SYMBOL, ACTIVE_TIMEFRAME } from '../config';
+import { ACTIVE_SYMBOL, ACTIVE_TIMEFRAME, CHART_KLINES_MAX, RECENT_TRADES_MAX } from '../config';
+
+export interface ExecutionHistoryEntry {
+  request_received_at_utc: string;
+  decision: 'APPROVE' | 'BLOCK';
+  blocked_by: string | null;
+  reasons: string[];
+  execution_status: string | null;
+  mode: string | null;
+  side: 'BUY' | 'SELL' | null;
+  amount_sol: number | null;
+  asset: string | null;
+  signature: string | null;
+  error: string | null;
+}
+
+const EXECUTION_HISTORY_MAX = 100 as const;
 
 interface TradingStore {
   // Market data
@@ -16,6 +32,9 @@ interface TradingStore {
 
   // AI
   signal: AISignalData | null;
+
+  // Execution history (newest first, max 100)
+  executionHistory: ExecutionHistoryEntry[];
 
   // Theme
   theme: 'dark' | 'light';
@@ -37,6 +56,8 @@ interface TradingStore {
   setSignal: (s: AISignalData) => void;
   setSelectedSymbol: (s: string) => void;
   setSelectedInterval: (i: string) => void;
+  setExecutionHistory: (entries: ExecutionHistoryEntry[]) => void;
+  prependExecutionEntry: (entry: ExecutionHistoryEntry) => void;
 }
 
 export const useTradingStore = create<TradingStore>((set) => ({
@@ -50,7 +71,8 @@ export const useTradingStore = create<TradingStore>((set) => ({
   selectedSymbol: ACTIVE_SYMBOL,
   selectedInterval: ACTIVE_TIMEFRAME,
   signal: null,
-  theme: (localStorage.getItem('theme') as 'dark' | 'light') ?? 'dark',
+  executionHistory: [],
+  theme: localStorage.getItem('theme') === 'light' ? 'light' : 'dark',
   toggleTheme: () =>
     set((state) => {
       const next = state.theme === 'dark' ? 'light' : 'dark';
@@ -79,7 +101,7 @@ export const useTradingStore = create<TradingStore>((set) => ({
         return { klines: updated };
       }
       const newKlines = [...existing, k];
-      if (newKlines.length > 500) newKlines.shift();
+      if (newKlines.length > CHART_KLINES_MAX) newKlines.shift();
       return { klines: newKlines };
     }),
 
@@ -88,7 +110,7 @@ export const useTradingStore = create<TradingStore>((set) => ({
   addTrade: (t) =>
     set((state) => {
       const updated = [t, ...state.trades];
-      if (updated.length > 100) updated.pop();
+      if (updated.length > RECENT_TRADES_MAX) updated.pop();
       return { trades: updated };
     }),
 
@@ -105,4 +127,13 @@ export const useTradingStore = create<TradingStore>((set) => ({
   setSelectedSymbol: (s) => set({ selectedSymbol: s }),
 
   setSelectedInterval: (i) => set({ selectedInterval: i }),
+
+  setExecutionHistory: (entries) => set({ executionHistory: entries }),
+
+  prependExecutionEntry: (entry) =>
+    set((state) => {
+      const updated = [entry, ...state.executionHistory];
+      if (updated.length > EXECUTION_HISTORY_MAX) updated.pop();
+      return { executionHistory: updated };
+    }),
 }));

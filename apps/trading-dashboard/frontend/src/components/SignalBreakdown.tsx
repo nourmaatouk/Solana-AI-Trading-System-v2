@@ -1,6 +1,6 @@
 import { useTradingStore } from '../store';
 import { parseSentimentLabel, signalAgeMinutes, SIGNAL_STALE_MINUTES } from '../utils/signal';
-import { DEFAULT_CONFIDENCE_GATE } from '../config';
+import { DEFAULT_CONFIDENCE_GATE, SPOOFING_HIGH, SPOOFING_MEDIUM } from '../config';
 
 function SentimentPill({ label }: { label: string }) {
   const upper = label?.toUpperCase() ?? '';
@@ -56,7 +56,7 @@ export function SignalBreakdown() {
   const isFresh = ageMin !== null && ageMin < SIGNAL_STALE_MINUTES;
   const isStale = ageMin !== null && ageMin >= SIGNAL_STALE_MINUTES;
 
-  const spoofColor = spoofing >= 0.6 ? '#f6465d' : spoofing >= 0.3 ? '#8B5CF6' : '#0ecb81';
+  const spoofColor = spoofing >= SPOOFING_HIGH ? '#f6465d' : spoofing >= SPOOFING_MEDIUM ? '#8B5CF6' : '#0ecb81';
 
   const action = (signal.action ?? signal.signal ?? 'HOLD').toUpperCase();
   const actionStyles: Record<string, { color: string; bg: string; border: string }> = {
@@ -122,7 +122,7 @@ export function SignalBreakdown() {
           <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(100, spoofing * 100)}%`, backgroundColor: spoofColor }} />
         </div>
         <div className="mt-1 text-xs" style={{ color: 'var(--text-3)' }}>
-          {spoofing >= 0.6 ? '⚠ High spoofing risk' : spoofing >= 0.3 ? '⚠ Moderate spoofing risk' : '✓ No spoofing detected'}
+          {spoofing >= SPOOFING_HIGH ? 'High spoofing risk' : spoofing >= SPOOFING_MEDIUM ? 'Moderate spoofing risk' : 'No spoofing detected'}
         </div>
       </div>
 

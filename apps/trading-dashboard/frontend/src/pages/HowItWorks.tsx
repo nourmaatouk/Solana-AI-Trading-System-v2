@@ -37,9 +37,32 @@ function Model({ name, weight, color, desc }: { name: string; weight: string; co
   );
 }
 
-import { DEFAULT_CONFIDENCE_GATE } from '../config';
+import {
+  ACTIVE_SYMBOL,
+  ACTIVE_TIMEFRAME,
+  CORRELATION_SYMBOL,
+  DASHBOARD_POLL_INTERVAL_MS,
+  DEFAULT_CONFIDENCE_GATE,
+  FUSION_WEIGHT_CLASSIFICATION,
+  FUSION_WEIGHT_GNN,
+  FUSION_WEIGHT_RL,
+  FUSION_WEIGHT_SENTIMENT,
+  FUSION_WEIGHT_SPOOFING,
+  GUARDIAN_SPOOFING_THRESHOLD,
+  MODEL_FEATURE_COUNT,
+  SIGNAL_POLL_INTERVAL_MS,
+  SPOOFING_HIGH,
+} from '../config';
+import { formatMarketPair } from '../utils/symbol';
 
 const GATE_PCT = Math.round(DEFAULT_CONFIDENCE_GATE * 100);
+const MARKET_PAIR = formatMarketPair(ACTIVE_SYMBOL);
+const CORRELATION_PAIR = formatMarketPair(CORRELATION_SYMBOL);
+const pct = (value: number) => `${Math.round(value * 100)}%`;
+const rlWeightLabel = FUSION_WEIGHT_RL > 0 ? `${pct(FUSION_WEIGHT_RL)} blend` : 'disabled';
+const rlFusionDesc = FUSION_WEIGHT_RL > 0
+  ? `The PPO RL score is blended in at ${pct(FUSION_WEIGHT_RL)} weight.`
+  : 'PPO is visible as a side signal, but its fusion weight is currently disabled.';
 
 export function HowItWorks() {
   return (
@@ -52,38 +75,38 @@ export function HowItWorks() {
 
         <Section title="System Overview">
           <p className="text-sm leading-relaxed" style={{ color: 'var(--text-2)' }}>
-            Solvanta is an AI-powered predictive trading assistant for SOL/USDT. It fuses four independent
+            Solvanta is an AI-powered predictive trading assistant for {MARKET_PAIR}. It fuses independent
             models — a machine learning classifier, a reinforcement learning agent, an NLP sentiment model,
-            and a graph neural network — to generate BUY / SELL / HOLD signals every 15 minutes.
+            and a graph neural network — to generate BUY / SELL / HOLD signals on the configured {ACTIVE_TIMEFRAME} cadence.
             All execution is simulated (paper trading).
           </p>
         </Section>
 
-        <Section title="Data Pipeline (every 15 minutes)">
+        <Section title={`Data Pipeline (${ACTIVE_TIMEFRAME} cadence)`}>
           <div className="space-y-3">
-            <Step n={1} title="Market data collection" desc="Fetches the latest OHLCV candles (15-min) for SOL/USDT from Binance REST API. BTC/USDT data is collected simultaneously for correlation features." />
-            <Step n={2} title="Technical feature engineering" desc="Computes 49 features: RSI, MACD, EMA, ATR, Bollinger Bands, Hawkes intensity (market microstructure), and BTC correlation. Designed to be leak-free across the training/test boundary." />
+            <Step n={1} title="Market data collection" desc={`Fetches the latest OHLCV candles (${ACTIVE_TIMEFRAME}) for ${MARKET_PAIR} from Binance REST API. ${CORRELATION_PAIR} data is collected simultaneously for correlation features.`} />
+            <Step n={2} title="Technical feature engineering" desc={`Computes ${MODEL_FEATURE_COUNT} features: RSI, MACD, EMA, ATR, Bollinger Bands, Hawkes intensity (market microstructure), and ${CORRELATION_PAIR} correlation. Designed to be leak-free across the training/test boundary.`} />
             <Step n={3} title="Order book collection" desc="A separate daemon streams the Binance depth20 WebSocket continuously, saving snapshots used as real-time order book features." />
             <Step n={4} title="News sentiment" desc="FinBERT processes the latest crypto news headlines. The sentiment score (POSITIVE / NEUTRAL / NEGATIVE) and relevance weight are computed and merged into the feature vector." />
             <Step n={5} title="XGBoost inference" desc={`The trained XGBoost model outputs P(UP) and P(DOWN). The ${GATE_PCT}% confidence gate requires one direction to exceed ${DEFAULT_CONFIDENCE_GATE} to produce a non-HOLD signal.`} />
-            <Step n={6} title="PPO RL inference" desc="A Proximal Policy Optimization agent trained on historical episodes observes the same 49 features plus portfolio state. Outputs a directional score blended into the final fused signal at 30% weight." />
+            <Step n={6} title="PPO RL inference" desc={`A Proximal Policy Optimization agent trained on historical episodes observes the same 49 features plus portfolio state. Current fusion weight: ${rlWeightLabel}.`} />
             <Step n={7} title="Spoofing detection" desc="TEN-GNN (Temporal Event Network GNN) analyzes order book graph structure for abnormal bid/ask patterns, large walls, and imbalance. Output: spoofing_confidence ∈ [0, 1]." />
-            <Step n={8} title="Fusion" desc="Base fusion: XGBoost 50% + FinBERT 25% + TEN-GNN 20% + GNN 5%. The PPO RL score is then blended in at 30% weight. If spoofing > 0.7, BUY signals are vetoed regardless." />
+            <Step n={8} title="Fusion + Guardian" desc={`Base fusion: XGBoost ${pct(FUSION_WEIGHT_CLASSIFICATION)} + FinBERT ${pct(FUSION_WEIGHT_SENTIMENT)} + TEN-GNN ${pct(FUSION_WEIGHT_SPOOFING)} + GNN ${pct(FUSION_WEIGHT_GNN)}. ${rlFusionDesc} Guardian blocks entries when spoofing exceeds ${pct(GUARDIAN_SPOOFING_THRESHOLD)}.`} />
             <Step n={9} title="Paper trade execution" desc="The fusion decision is logged and a simulated trade is recorded. Equity is tracked from a normalized baseline of 1.0." />
           </div>
         </Section>
 
         <Section title="AI Models">
           <div className="space-y-4">
-            <Model name="XGBoost Classifier" weight="50%" color="#8B5CF6"
-              desc={`Gradient-boosted tree trained on walk-forward validated historical data. Input: 49 technical and microstructure features. Output: probability of price going UP or DOWN in the next 15-minute candle. Confidence gate at ${GATE_PCT}% prevents low-conviction signals.`} />
-            <Model name="PPO RL Agent" weight="30% blend" color="#F59E0B"
-              desc="Proximal Policy Optimization agent trained with a custom TradingEnv on 188k historical 15-min bars. Observation: 49 market features + 3 portfolio state variables. Action space: HOLD / BUY / SELL. Score blended into the base fused result." />
-            <Model name="FinBERT Sentiment" weight="25%" color="#14B8A6"
+            <Model name="XGBoost Classifier" weight={pct(FUSION_WEIGHT_CLASSIFICATION)} color="#8B5CF6"
+              desc={`Gradient-boosted tree trained on walk-forward validated historical data. Input: ${MODEL_FEATURE_COUNT} technical and microstructure features. Output: probability of price going UP or DOWN in the next ${ACTIVE_TIMEFRAME} candle. Confidence gate at ${GATE_PCT}% prevents low-conviction signals.`} />
+            <Model name="PPO RL Agent" weight={rlWeightLabel} color="#F59E0B"
+              desc="Proximal Policy Optimization agent trained with a custom TradingEnv on historical bars. Action space: HOLD / BUY / SELL. It remains a side signal while RL fusion weight is disabled." />
+            <Model name="FinBERT Sentiment" weight={pct(FUSION_WEIGHT_SENTIMENT)} color="#14B8A6"
               desc="BERT-based NLP model fine-tuned on financial text. Processes news headlines from crypto RSS feeds. Outputs POSITIVE / NEUTRAL / NEGATIVE label with a relevance score. Reduces BUY confidence when sentiment is strongly negative." />
-            <Model name="TEN-GNN Spoofing Detector" weight="20%" color="#f6465d"
-              desc="Temporal Event Network GNN that models the order book as a graph. Detects abnormal patterns: large liquidity walls, rapid imbalance shifts, and coordinated bid/ask pressure. Confidence > 0.7 vetoes all BUY signals." />
-            <Model name="GNN Structural" weight="5%" color="#0ecb81"
+            <Model name="TEN-GNN Spoofing Detector" weight={pct(FUSION_WEIGHT_SPOOFING)} color="#f6465d"
+              desc={`Temporal Event Network GNN that models the order book as a graph. Confidence above ${pct(SPOOFING_HIGH)} is highlighted as suspicious, and Guardian blocks entries above ${pct(GUARDIAN_SPOOFING_THRESHOLD)}.`} />
+            <Model name="GNN Structural" weight={pct(FUSION_WEIGHT_GNN)} color="#0ecb81"
               desc="Graph neural network encoding the structural properties of the order book (depth, spread, level distribution). Provides a low-weight sanity check on the overall market microstructure." />
           </div>
         </Section>
@@ -91,11 +114,11 @@ export function HowItWorks() {
         <Section title="Real-Time Data (WebSocket)">
           <div className="text-xs space-y-2" style={{ color: 'var(--text-2)' }}>
             {[
-              ['Price ticker',     'solusdt@ticker',           'Live price, 24h change, volume — updated every 100ms'],
-              ['Candlestick chart','solusdt@kline_{interval}', 'Real-time OHLCV candles — REST backfill of 500 historical candles on connect'],
-              ['Order book',       'solusdt@depth20@100ms',    'Top 20 bid/ask levels — refreshed every 100ms'],
-              ['Trade stream',     'solusdt@trade',            'Every executed trade with buyer/seller side'],
-              ['Watchlist',        '{symbol}@ticker × 6',      'Live prices for SOL, BTC, ETH, BNB, ADA, XRP'],
+              ['Price ticker',     `${ACTIVE_SYMBOL.toLowerCase()}@ticker`,           'Live price, 24h change, volume'],
+              ['Candlestick chart',`${ACTIVE_SYMBOL.toLowerCase()}@kline_{interval}`, 'Real-time OHLCV candles with REST backfill on connect'],
+              ['Order book',       `${ACTIVE_SYMBOL.toLowerCase()}@depth`,            'Top bid/ask levels'],
+              ['Trade stream',     `${ACTIVE_SYMBOL.toLowerCase()}@trade`,            'Every executed trade with buyer/seller side'],
+              ['Watchlist',        '{symbol}@ticker',      'Configured watchlist symbols'],
             ].map(([name, stream, desc]) => (
               <div key={name} className="pb-2 last:pb-0" style={{ borderBottom: '1px solid var(--border)' }}>
                 <div className="flex items-center gap-2">
@@ -118,7 +141,7 @@ export function HowItWorks() {
               ['AI API',           'FastAPI (Python) on port 8000'],
               ['Process manager',  'PM2 — 6 daemons always running'],
               ['ML training',      'XGBoost + PPO (stable-baselines3) + walk-forward validation'],
-              ['Data exchange',    'JSON files + REST polling (15s signal, 30s scheduler)'],
+              ['Data exchange',    `JSON files + REST polling (${Math.round(SIGNAL_POLL_INTERVAL_MS / 1000)}s signal, ${Math.round(DASHBOARD_POLL_INTERVAL_MS / 1000)}s dashboard)`],
             ].map(([name, value]) => (
               <div key={name} className="rounded-lg p-3" style={{ background: 'var(--bg-sub)' }}>
                 <div className="mb-0.5" style={{ color: 'var(--text-3)' }}>{name}</div>

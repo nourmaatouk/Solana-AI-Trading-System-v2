@@ -11,6 +11,7 @@ import { HowItWorks } from './pages/HowItWorks';
 import { SystemStatus } from './pages/SystemStatus';
 import { SettingsPage } from './pages/SettingsPage';
 import { BacktestPage } from './pages/BacktestPage';
+import { ExecutionPanel } from './pages/ExecutionPanel';
 import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { ErrorBanner } from './components/ErrorBanner';
@@ -44,6 +45,7 @@ function AppLayout() {
             <Route path="/status" element={<SystemStatus />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/backtest" element={<BacktestPage />} />
+            <Route path="/execution" element={<ExecutionPanel />} />
           </Routes>
         </main>
       </div>

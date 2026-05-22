@@ -1,12 +1,6 @@
 import { useTradingStore } from '../store';
-
-const WATCHLIST_ORDER = ['SOLUSDT', 'BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'ADAUSDT', 'XRPUSDT'];
-const CHART_SUPPORTED = new Set(['SOLUSDT']);
-
-function formatSymbol(raw: string) {
-  if (raw.endsWith('USDT')) return { base: raw.slice(0, -4), quote: 'USDT' };
-  return { base: raw, quote: '' };
-}
+import { ACTIVE_SYMBOL, CHART_SUPPORTED_SYMBOLS, WATCHLIST_SYMBOLS } from '../config';
+import { formatMarketPair, parseMarketSymbol } from '../utils/symbol';
 
 export function Watchlist() {
   const watchlist = useTradingStore((s) => s.watchlist);
@@ -14,7 +8,7 @@ export function Watchlist() {
   const setSelectedSymbol = useTradingStore((s) => s.setSelectedSymbol);
 
   const map = new Map(watchlist.map((w) => [w.symbol, w]));
-  const items = WATCHLIST_ORDER.map((sym) => map.get(sym) ?? { symbol: sym, price: '—', change: '0', changePct: '0', volume: '0' });
+  const items = WATCHLIST_SYMBOLS.map((sym) => map.get(sym) ?? { symbol: sym, price: '—', change: '0', changePct: '0', volume: '0' });
 
   return (
     <div className="flex flex-col h-full" style={{ background: 'var(--bg-panel)', borderRight: '1px solid var(--border)' }}>
@@ -26,12 +20,12 @@ export function Watchlist() {
           const pct = parseFloat(item.changePct ?? '0');
           const isPositive = pct >= 0;
           const isSelected = item.symbol === selectedSymbol;
-          const { base, quote } = formatSymbol(item.symbol);
-          const chartSupported = CHART_SUPPORTED.has(item.symbol);
+          const { base, quote } = parseMarketSymbol(item.symbol);
+          const chartSupported = CHART_SUPPORTED_SYMBOLS.has(item.symbol);
           return (
             <button
               key={item.symbol}
-              title={chartSupported ? undefined : 'Chart & order book available for SOL/USDT only'}
+              title={chartSupported ? undefined : `Chart & order book available for ${formatMarketPair(ACTIVE_SYMBOL)} only`}
               className={`w-full text-left px-3 py-2.5 transition-colors ${chartSupported ? 'cursor-pointer' : 'cursor-default opacity-60'}`}
               style={{
                 borderBottom: '1px solid var(--border)',
@@ -65,7 +59,7 @@ export function Watchlist() {
         })}
       </div>
       <div className="px-3 py-2" style={{ borderTop: '1px solid var(--border)' }}>
-        <div className="text-[10px]" style={{ color: 'var(--text-3)' }}>AI signals: SOL/USDT only</div>
+        <div className="text-[10px]" style={{ color: 'var(--text-3)' }}>AI signals: {formatMarketPair(ACTIVE_SYMBOL)} only</div>
       </div>
     </div>
   );

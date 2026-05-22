@@ -14,12 +14,15 @@ import {
 } from 'lightweight-charts';
 import { useTradingStore } from '../store';
 import { socketService } from '../services/socket';
+import { AVAILABLE_TIMEFRAMES, CHART_MA_COLORS, CHART_MA_PERIODS } from '../config';
 
-const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1D'];
+const MOVING_AVERAGES = CHART_MA_PERIODS.map((period, index) => ({
+  period,
+  color: CHART_MA_COLORS[index % CHART_MA_COLORS.length],
+}));
 
-const TZ_OFFSET_S = -new Date().getTimezoneOffset() * 60;
 function localTime(utcSeconds: number): Time {
-  return (utcSeconds + TZ_OFFSET_S) as Time;
+  return (utcSeconds + (-new Date().getTimezoneOffset() * 60)) as Time;
 }
 
 function calcSMA(closes: number[], period: number): (number | null)[] {
@@ -47,9 +50,7 @@ export function PriceChart() {
   const chartRef = useRef<IChartApi | null>(null);
   const candleRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const volumeRef = useRef<ISeriesApi<'Histogram'> | null>(null);
-  const ma7Ref = useRef<ISeriesApi<'Line'> | null>(null);
-  const ma25Ref = useRef<ISeriesApi<'Line'> | null>(null);
-  const ma99Ref = useRef<ISeriesApi<'Line'> | null>(null);
+  const maSeriesRefs = useRef<Array<ISeriesApi<'Line'>>>([]);
   const priceLineRef = useRef<IPriceLine | null>(null);
 
   const prevLenRef = useRef(0);
@@ -89,16 +90,14 @@ export function PriceChart() {
     });
     chart.priceScale('volume').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
 
-    const ma7Series = chart.addLineSeries({ color: '#8B5CF6', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
-    const ma25Series = chart.addLineSeries({ color: '#14B8A6', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
-    const ma99Series = chart.addLineSeries({ color: '#f6465d', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+    const maSeries = MOVING_AVERAGES.map(({ color }) => (
+      chart.addLineSeries({ color, lineWidth: 1, priceLineVisible: false, lastValueVisible: false })
+    ));
 
     chartRef.current = chart;
     candleRef.current = candleSeries;
     volumeRef.current = volumeSeries;
-    ma7Ref.current = ma7Series;
-    ma25Ref.current = ma25Series;
-    ma99Ref.current = ma99Series;
+    maSeriesRefs.current = maSeries;
 
     const ro = new ResizeObserver(() => {
       if (containerRef.current) {
@@ -116,9 +115,7 @@ export function PriceChart() {
       chartRef.current = null;
       candleRef.current = null;
       volumeRef.current = null;
-      ma7Ref.current = null;
-      ma25Ref.current = null;
-      ma99Ref.current = null;
+      maSeriesRefs.current = [];
     };
   }, []);
 
@@ -151,18 +148,16 @@ export function PriceChart() {
         color: parseFloat(k.close) >= parseFloat(k.open) ? '#0ecb8140' : '#f6465d40',
       }));
       const closes = klines.map((k) => parseFloat(k.close));
-      const ma7 = calcSMA(closes, 7);
-      const ma25 = calcSMA(closes, 25);
-      const ma99 = calcSMA(closes, 99);
-      const ma7Data: LineData[] = klines.map((k, i) => ({ time: localTime(k.time), value: ma7[i] })).filter((d): d is LineData => d.value !== null);
-      const ma25Data: LineData[] = klines.map((k, i) => ({ time: localTime(k.time), value: ma25[i] })).filter((d): d is LineData => d.value !== null);
-      const ma99Data: LineData[] = klines.map((k, i) => ({ time: localTime(k.time), value: ma99[i] })).filter((d): d is LineData => d.value !== null);
 
       candleRef.current.setData(candleData);
       volumeRef.current.setData(volumeData);
-      ma7Ref.current?.setData(ma7Data);
-      ma25Ref.current?.setData(ma25Data);
-      ma99Ref.current?.setData(ma99Data);
+      MOVING_AVERAGES.forEach(({ period }, index) => {
+        const ma = calcSMA(closes, period);
+        const maData: LineData[] = klines
+          .map((k, i) => ({ time: localTime(k.time), value: ma[i] }))
+          .filter((d): d is LineData => d.value !== null);
+        maSeriesRefs.current[index]?.setData(maData);
+      });
 
       if (!hasFittedRef.current) {
         chartRef.current?.timeScale().fitContent();
@@ -183,12 +178,12 @@ export function PriceChart() {
       });
       const closes = klines.map((k) => parseFloat(k.close));
       const i = curr - 1;
-      const ma7v = i >= 6  ? closes.slice(i - 6,  i + 1).reduce((a, b) => a + b, 0) / 7  : null;
-      const ma25v = i >= 24 ? closes.slice(i - 24, i + 1).reduce((a, b) => a + b, 0) / 25 : null;
-      const ma99v = i >= 98 ? closes.slice(i - 98, i + 1).reduce((a, b) => a + b, 0) / 99 : null;
-      if (ma7v !== null)  ma7Ref.current?.update({ time: localTime(last.time), value: ma7v });
-      if (ma25v !== null) ma25Ref.current?.update({ time: localTime(last.time), value: ma25v });
-      if (ma99v !== null) ma99Ref.current?.update({ time: localTime(last.time), value: ma99v });
+      MOVING_AVERAGES.forEach(({ period }, index) => {
+        const start = i - period + 1;
+        if (start < 0) return;
+        const value = closes.slice(start, i + 1).reduce((a, b) => a + b, 0) / period;
+        maSeriesRefs.current[index]?.update({ time: localTime(last.time), value });
+      });
     }
   }, [klines]);
 
@@ -242,7 +237,7 @@ export function PriceChart() {
       {/* Toolbar */}
       <div className="flex items-center gap-2 px-3 py-1.5" style={{ borderBottom: '1px solid var(--border)' }}>
         <div className="flex items-center gap-1">
-          {TIMEFRAMES.map((tf) => (
+          {AVAILABLE_TIMEFRAMES.map((tf) => (
             <button
               key={tf}
               onClick={() => handleIntervalChange(tf)}
@@ -258,18 +253,12 @@ export function PriceChart() {
         </div>
         <div className="h-3 w-px" style={{ background: 'var(--border)' }} />
         <div className="flex items-center gap-3 text-[10px]">
-          <span className="flex items-center gap-1">
-            <span className="w-3 h-0.5 inline-block" style={{ background: '#8B5CF6' }} />
-            <span style={{ color: 'var(--text-3)' }}>MA7</span>
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-3 h-0.5 inline-block" style={{ background: '#14B8A6' }} />
-            <span style={{ color: 'var(--text-3)' }}>MA25</span>
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-3 h-0.5 inline-block" style={{ background: '#f6465d' }} />
-            <span style={{ color: 'var(--text-3)' }}>MA99</span>
-          </span>
+          {MOVING_AVERAGES.map(({ period, color }) => (
+            <span key={period} className="flex items-center gap-1">
+              <span className="w-3 h-0.5 inline-block" style={{ background: color }} />
+              <span style={{ color: 'var(--text-3)' }}>MA{period}</span>
+            </span>
+          ))}
         </div>
       </div>
 

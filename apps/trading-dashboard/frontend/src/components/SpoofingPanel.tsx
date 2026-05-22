@@ -1,5 +1,13 @@
 import { useOrderBook } from '../hooks/useOrderBook';
 import { useTradingStore } from '../store';
+import {
+  IMBALANCE_BUY_PRESSURE_PCT,
+  IMBALANCE_SELL_PRESSURE_PCT,
+  SPOOFING_HIGH,
+  SPOOFING_MEDIUM,
+  SPOOFING_ORDERBOOK_LEVELS,
+} from '../config';
+import { parseMarketSymbol } from '../utils/symbol';
 
 function Gauge({ pct, label, color }: { pct: number; label: string; color: string }) {
   return (
@@ -34,22 +42,26 @@ function AlertBadge({ status }: { status: 'NORMAL' | 'WARNING' | 'SUSPICIOUS' })
 }
 
 export function SpoofingPanel() {
-  const { bids, asks, spread, spreadPct, imbalancePct } = useOrderBook(20);
+  const { bids, asks, spread, spreadPct, imbalancePct } = useOrderBook(SPOOFING_ORDERBOOK_LEVELS);
   const signal = useTradingStore((s) => s.signal);
   const ticker = useTradingStore((s) => s.ticker);
+  const selectedSymbol = useTradingStore((s) => s.selectedSymbol);
+  const { base } = parseMarketSymbol(selectedSymbol);
 
   const spoofingPct = (signal?.spoofing_confidence ?? 0) * 100;
+  const spoofingHighPct = SPOOFING_HIGH * 100;
+  const spoofingMediumPct = SPOOFING_MEDIUM * 100;
   let imbalanceLabel = 'Balanced', imbalanceColor = 'var(--text-2)';
-  if (imbalancePct > 60) { imbalanceLabel = 'Buy Pressure';  imbalanceColor = 'var(--green)'; }
-  else if (imbalancePct < 40) { imbalanceLabel = 'Sell Pressure'; imbalanceColor = 'var(--red)'; }
+  if (imbalancePct > IMBALANCE_BUY_PRESSURE_PCT) { imbalanceLabel = 'Buy Pressure';  imbalanceColor = 'var(--green)'; }
+  else if (imbalancePct < IMBALANCE_SELL_PRESSURE_PCT) { imbalanceLabel = 'Sell Pressure'; imbalanceColor = 'var(--red)'; }
 
   const alertStatus: 'NORMAL' | 'WARNING' | 'SUSPICIOUS' =
-    spoofingPct >= 70 ? 'SUSPICIOUS' : spoofingPct >= 30 ? 'WARNING' : 'NORMAL';
+    spoofingPct >= spoofingHighPct ? 'SUSPICIOUS' : spoofingPct >= spoofingMediumPct ? 'WARNING' : 'NORMAL';
 
   const largestBid = bids.reduce((m, b) => b.size > m.size ? b : m, { price: 0, size: 0, total: 0, depthPct: 0 });
   const largestAsk = asks.reduce((m, a) => a.size > m.size ? a : m, { price: 0, size: 0, total: 0, depthPct: 0 });
   const currentPrice = ticker ? parseFloat(ticker.price) : 0;
-  const gnnColor = spoofingPct >= 70 ? 'var(--red)' : spoofingPct >= 30 ? 'var(--accent)' : 'var(--green)';
+  const gnnColor = spoofingPct >= spoofingHighPct ? 'var(--red)' : spoofingPct >= spoofingMediumPct ? 'var(--accent)' : 'var(--green)';
 
   return (
     <div className="flex flex-col" style={{ background: 'var(--bg-panel)', borderLeft: '1px solid var(--border)', borderTop: '1px solid var(--border)' }}>
@@ -77,7 +89,7 @@ export function SpoofingPanel() {
               <div key={label} className="rounded p-2" style={{ background: 'var(--bg-sub)' }}>
                 <div className="text-[9px] font-medium mb-0.5" style={{ color }}>{label}</div>
                 <div className="text-[10px] font-mono" style={{ color: 'var(--text-1)' }}>${price > 0 ? price.toFixed(2) : '—'}</div>
-                <div className="text-[9px]" style={{ color: 'var(--text-3)' }}>{size > 0 ? size.toFixed(2) : '—'} SOL</div>
+                <div className="text-[9px]" style={{ color: 'var(--text-3)' }}>{size > 0 ? size.toFixed(2) : '—'} {base}</div>
               </div>
             ))}
           </div>

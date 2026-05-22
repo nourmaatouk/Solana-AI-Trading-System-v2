@@ -1,14 +1,18 @@
 import { useEffect, useState, useRef } from 'react';
 import { useTradingStore } from '../store';
 import type { WatchlistItem } from '../types';
+import { CLOCK_TICK_INTERVAL_MS, NOTIFICATION_HISTORY_LIMIT, WATCHLIST_SYMBOLS } from '../config';
+import { parseMarketSymbol } from '../utils/symbol';
+import { WalletConnectionButton } from './WalletConnectionButton';
 
 function TickerChip({ item }: { item: WatchlistItem }) {
   const pct = parseFloat(item.changePct);
   const isPos = pct >= 0;
+  const { base } = parseMarketSymbol(item.symbol);
   return (
     <div className="flex items-center gap-1.5 px-3 py-1 rounded-full flex-shrink-0"
       style={{ background: 'var(--bg-sub)', border: '1px solid var(--border)' }}>
-      <span className="text-xs font-semibold" style={{ color: 'var(--text-1)' }}>{item.symbol.replace('USDT', '')}</span>
+      <span className="text-xs font-semibold" style={{ color: 'var(--text-1)' }}>{base}</span>
       <span className="text-xs font-mono" style={{ color: 'var(--text-1)' }}>${parseFloat(item.price).toLocaleString('en-US', { maximumFractionDigits: 4 })}</span>
       <span className="text-xs font-medium" style={{ color: isPos ? 'var(--green)' : 'var(--red)' }}>
         {isPos ? '+' : ''}{pct.toFixed(2)}%
@@ -97,29 +101,30 @@ export function TopBar() {
   useEffect(() => {
     const tick = () => setTimeStr(new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
     tick();
-    const id = setInterval(tick, 1000);
+    const id = setInterval(tick, CLOCK_TICK_INTERVAL_MS);
     return () => clearInterval(id);
   }, []);
 
   useEffect(() => {
     if (!signal) return;
-    const action = signal.action ?? (signal as unknown as Record<string, unknown>).signal as string ?? 'HOLD';
+    const rawAction = signal.action ?? (signal as Record<string, unknown>)['signal'];
+    const action = typeof rawAction === 'string' ? rawAction : 'HOLD';
     if (action !== prevSignalRef.current) {
       prevSignalRef.current = action;
       const ts = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
       const conf = signal.confidence != null ? ` · ${(signal.confidence * 100).toFixed(0)}% confidence` : '';
-      setNotifications((prev) => [`[${ts}] New signal: ${action}${conf}`, ...prev.slice(0, 19)]);
+      setNotifications((prev) => [`[${ts}] New signal: ${action}${conf}`, ...prev.slice(0, NOTIFICATION_HISTORY_LIMIT - 1)]);
     }
   }, [signal]);
 
   useEffect(() => {
     if (connectionStatus === 'reconnecting') {
       const ts = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-      setNotifications((prev) => [`[${ts}] Connection lost — reconnecting to ${exchange}`, ...prev.slice(0, 19)]);
+      setNotifications((prev) => [`[${ts}] Connection lost - reconnecting to ${exchange}`, ...prev.slice(0, NOTIFICATION_HISTORY_LIMIT - 1)]);
     }
     if (connectionStatus === 'connected') {
       const ts = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-      setNotifications((prev) => [`[${ts}] Connected to ${exchange.toUpperCase()}`, ...prev.slice(0, 19)]);
+      setNotifications((prev) => [`[${ts}] Connected to ${exchange.toUpperCase()}`, ...prev.slice(0, NOTIFICATION_HISTORY_LIMIT - 1)]);
     }
   }, [connectionStatus, exchange]);
 
@@ -132,6 +137,7 @@ export function TopBar() {
   const filteredItems = searchQuery
     ? allItems.filter((i) => i.symbol.toLowerCase().includes(searchQuery.toLowerCase()))
     : allItems;
+  const searchExamples = WATCHLIST_SYMBOLS.slice(0, 2).map((symbol) => parseMarketSymbol(symbol).base).join(', ');
 
   return (
     <header className="h-12 flex items-center px-4 gap-4 flex-shrink-0"
@@ -144,7 +150,7 @@ export function TopBar() {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search symbol… (e.g. BTC, SOL)"
+            placeholder={`Search symbol... (e.g. ${searchExamples})`}
             className="flex-1 text-sm rounded-lg px-3 py-1 focus:outline-none"
             style={{ background: 'var(--bg-sub)', border: '1px solid var(--border)', color: 'var(--text-1)' }}
           />
@@ -187,6 +193,9 @@ export function TopBar() {
         )}
 
         <span className="text-xs font-mono hidden sm:block" style={{ color: 'var(--text-3)' }}>{timeStr}</span>
+
+        {/* Wallet connection */}
+        <WalletConnectionButton />
 
         {/* Theme toggle */}
         <ThemeToggle />

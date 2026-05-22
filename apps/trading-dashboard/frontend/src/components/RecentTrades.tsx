@@ -1,20 +1,17 @@
 import { useTrades } from '../hooks/useTrades';
 import { useTradingStore } from '../store';
+import { RECENT_TRADES_VISIBLE } from '../config';
+import { parseMarketSymbol } from '../utils/symbol';
 
-function parseBase(sym: string) {
-  if (sym.endsWith('USDT')) return sym.slice(0, -4);
-  if (sym.endsWith('BTC')) return sym.slice(0, -3);
-  return sym;
-}
 function formatTime(ts: number): string {
   const d = new Date(ts);
   return [d.getHours(), d.getMinutes(), d.getSeconds()].map((n) => String(n).padStart(2, '0')).join(':');
 }
 
 export function RecentTrades() {
-  const trades = useTrades(30);
+  const trades = useTrades(RECENT_TRADES_VISIBLE);
   const selectedSymbol = useTradingStore((s) => s.selectedSymbol);
-  const base = parseBase(selectedSymbol);
+  const { base, quote } = parseMarketSymbol(selectedSymbol);
 
   return (
     <div className="flex flex-col h-full" style={{ background: 'var(--bg-panel)', borderTop: '1px solid var(--border)' }}>
@@ -26,7 +23,7 @@ export function RecentTrades() {
         </div>
       </div>
       <div className="flex items-center px-3 py-1" style={{ borderBottom: '1px solid var(--border)' }}>
-        <span className="flex-1 text-[10px]" style={{ color: 'var(--text-3)' }}>Price (USDT)</span>
+        <span className="flex-1 text-[10px]" style={{ color: 'var(--text-3)' }}>Price ({quote || 'quote'})</span>
         <span className="flex-1 text-center text-[10px]" style={{ color: 'var(--text-3)' }}>Amount ({base})</span>
         <span className="flex-1 text-right text-[10px]" style={{ color: 'var(--text-3)' }}>Time</span>
       </div>

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAISignal } from '../hooks/useAISignal';
 import { triggerSignal } from '../services/api';
-import { DEFAULT_CONFIDENCE_GATE } from '../config';
+import { DEFAULT_CONFIDENCE_GATE, SPOOFING_HIGH, SPOOFING_MEDIUM } from '../config';
 
 function ConfidenceBar({ value, color = 'var(--green)' }: { value: number; color?: string }) {
   const pct = Math.min(100, Math.max(0, value * 100));
@@ -138,7 +138,7 @@ export function AISignalPanel() {
               </div>
               <ConfidenceBar
                 value={signal.spoofing_confidence ?? 0}
-                color={(signal.spoofing_confidence ?? 0) >= 0.6 ? '#f6465d' : (signal.spoofing_confidence ?? 0) >= 0.3 ? '#8B5CF6' : '#0ecb81'}
+                color={(signal.spoofing_confidence ?? 0) >= SPOOFING_HIGH ? '#f6465d' : (signal.spoofing_confidence ?? 0) >= SPOOFING_MEDIUM ? '#8B5CF6' : '#0ecb81'}
               />
               {signal.reasoning?.spoofing && (
                 <div className="text-[9px] mt-1" style={{ color: 'var(--text-3)' }}>{signal.reasoning.spoofing}</div>

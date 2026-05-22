@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTradingStore } from '../store';
 import { fetchScheduler } from '../services/api';
-import { DASHBOARD_POLL_INTERVAL_MS } from '../config';
+import { ASSISTANT_SENTIMENT_THRESHOLD, CLOCK_TICK_INTERVAL_MS, DASHBOARD_POLL_INTERVAL_MS } from '../config';
 
 interface SmartAssistantProps {
   winRate: number | null;
@@ -19,8 +19,8 @@ function getGreeting(): string {
 
 function getMarketSentiment(score: number | null): string {
   if (score === null) return 'neutral';
-  if (score > 0.1) return 'bullish';
-  if (score < -0.1) return 'bearish';
+  if (score > ASSISTANT_SENTIMENT_THRESHOLD) return 'bullish';
+  if (score < -ASSISTANT_SENTIMENT_THRESHOLD) return 'bearish';
   return 'neutral';
 }
 
@@ -41,7 +41,7 @@ export function SmartAssistant({ winRate, activeSignals, loading, fusedScore }: 
   const [pipelineStatus, setPipelineStatus] = useState<string | null>(null);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
 
-  // Poll scheduler status every 30s
+  // Poll scheduler status on the configured dashboard cadence.
   useEffect(() => {
     const load = async () => {
       try {
@@ -56,7 +56,7 @@ export function SmartAssistant({ winRate, activeSignals, loading, fusedScore }: 
     return () => clearInterval(interval);
   }, []);
 
-  // Tick countdown every second
+  // Tick countdown on the configured clock cadence.
   useEffect(() => {
     if (!nextRunUtc) return;
     const tick = () => {
@@ -64,7 +64,7 @@ export function SmartAssistant({ winRate, activeSignals, loading, fusedScore }: 
       setSecondsLeft(diff);
     };
     tick();
-    const id = setInterval(tick, 1000);
+    const id = setInterval(tick, CLOCK_TICK_INTERVAL_MS);
     return () => clearInterval(id);
   }, [nextRunUtc]);
 

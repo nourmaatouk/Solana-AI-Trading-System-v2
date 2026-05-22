@@ -1,6 +1,23 @@
 import { useEffect, useState, useMemo } from 'react';
 import { fetchBacktest, fetchWalkForward, fetchHistory } from '../services/api';
-import { DEFAULT_CONFIDENCE_GATE } from '../config';
+import {
+  ACTIVE_SYMBOL,
+  ACTIVE_TIMEFRAME,
+  BACKTEST_ACCURACY_GOOD_THRESHOLD,
+  BACKTEST_AUC_GOOD_THRESHOLD,
+  BACKTEST_MCC_GOOD_THRESHOLD,
+  BACKTEST_MODEL_LABEL,
+  BACKTEST_PRECISION_GOOD_THRESHOLD,
+  DEFAULT_CONFIDENCE_GATE,
+  PAPER_TRADING_FEE_RATE,
+  PURGE_GAP_BARS,
+  PURGE_GAP_LABEL,
+  RANDOM_BASELINE_AUC,
+  TARGET_STOP_LOSS,
+  TARGET_TAKE_PROFIT,
+  WALK_FORWARD_FOLDS,
+} from '../config';
+import { formatMarketPair, parseMarketSymbol } from '../utils/symbol';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -146,8 +163,14 @@ const card = { background: 'var(--bg-panel)', border: '1px solid var(--border)' 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export function BacktestPage() {
+  const marketPair = formatMarketPair(ACTIVE_SYMBOL);
+  const { base } = parseMarketSymbol(ACTIVE_SYMBOL);
+  const paperFeePct = PAPER_TRADING_FEE_RATE * 100;
+  const takeProfitPct = TARGET_TAKE_PROFIT * 100;
+  const stopLossPct = TARGET_STOP_LOSS * 100;
   const [bt, setBt] = useState<BacktestData | null>(null);
   const [wf, setWf] = useState<WalkForwardData | null>(null);
+  const foldCount = wf?.fold_results.length ?? WALK_FORWARD_FOLDS;
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -165,7 +188,11 @@ export function BacktestPage() {
       if (wfRes.status === 'fulfilled') setWf(wfRes.value as unknown as WalkForwardData);
       if (histRes.status === 'fulfilled') setHistory(histRes.value as HistoryEntry[]);
       if (btRes.status === 'rejected' && wfRes.status === 'rejected') {
-        setError('Could not load backtest data. Run 20_walk_forward_validation.py first.');
+        setError('Could not load backtest or walk-forward data. Run 20_walk_forward_validation.py first.');
+      } else if (btRes.status === 'rejected') {
+        setError('Could not load backtest metrics. Run 20_walk_forward_validation.py first.');
+      } else if (wfRes.status === 'rejected') {
+        setError('Could not load walk-forward data. Run 20_walk_forward_validation.py first.');
       }
       setLoading(false);
     });
@@ -190,7 +217,7 @@ export function BacktestPage() {
         <div>
           <h1 className="text-xl font-bold mb-1" style={{ color: 'var(--text-1)' }}>Backtesting Results</h1>
           <p className="text-sm" style={{ color: 'var(--text-3)' }}>
-            Walk-forward validation on historical SOL/USDT data · XGBoost H4 (1-hour horizon) · Confidence gate {((wf?.confidence_gate ?? DEFAULT_CONFIDENCE_GATE) * 100).toFixed(0)}%
+            Walk-forward validation on historical {marketPair} data · {BACKTEST_MODEL_LABEL} · Confidence gate {((wf?.confidence_gate ?? DEFAULT_CONFIDENCE_GATE) * 100).toFixed(0)}%
           </p>
         </div>
 
@@ -207,7 +234,7 @@ export function BacktestPage() {
             <Stat label="Win Rate"      value={`${(bt.win_rate * 100).toFixed(1)}%`}         sub={`${bt.n_total_trades.toLocaleString()} trades`} color="#0ecb81" />
             <Stat label="Max Drawdown"  value={`${(bt.max_drawdown * 100).toFixed(1)}%`}    sub="Worst peak-to-trough"       color="#f6465d" />
             <Stat label="Avg Net PnL"   value={`+${(bt.avg_net_pnl * 100).toFixed(2)}%`}   sub="Per trade after fees"       color="#0ecb81" />
-            <Stat label="vs Buy & Hold" value={`+${bt.buy_and_hold_pct.toFixed(0)}%`}       sub="SOL buy & hold period"      color="#8B5CF6" />
+            <Stat label="vs Buy & Hold" value={`+${bt.buy_and_hold_pct.toFixed(0)}%`}       sub={`${base} buy & hold period`}      color="#8B5CF6" />
             <Stat label="Total Trades"  value={bt.n_total_trades.toLocaleString()}           sub={`↑ ${bt.n_up_signals} · ↓ ${bt.n_dn_signals}`} />
           </div>
         )}
@@ -216,13 +243,13 @@ export function BacktestPage() {
         {agg && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <Stat label="Overall AUC"     value={agg.overall_auc.toFixed(4)}
-              sub="Random baseline: 0.5000"
-              color={agg.overall_auc > 0.55 ? '#0ecb81' : '#8B5CF6'} />
+              sub={`Random baseline: ${RANDOM_BASELINE_AUC.toFixed(4)}`}
+              color={agg.overall_auc > BACKTEST_AUC_GOOD_THRESHOLD ? '#0ecb81' : '#8B5CF6'} />
             <Stat label="Accuracy"        value={`${(agg.overall_accuracy * 100).toFixed(2)}%`}
               sub={`±${(agg.std_accuracy * 100).toFixed(2)}% across folds`} />
             <Stat label="MCC"             value={agg.overall_mcc.toFixed(4)}
               sub="0 = random · 1 = perfect"
-              color={agg.overall_mcc > 0.1 ? '#0ecb81' : '#8B5CF6'} />
+              color={agg.overall_mcc > BACKTEST_MCC_GOOD_THRESHOLD ? '#0ecb81' : '#8B5CF6'} />
             <Stat label="Gated Precision" value={`${(agg.gated_production.combined_precision * 100).toFixed(1)}%`}
               sub={`Baseline: ${(agg.random_baseline_prec * 100).toFixed(1)}%`}
               color="#14B8A6" />
@@ -318,16 +345,16 @@ export function BacktestPage() {
                     <tr key={fold.fold} style={{ borderBottom: '1px solid var(--border)' }}>
                       <td className="py-2 pr-4 font-semibold" style={{ color: 'var(--text-1)' }}>Fold {fold.fold}</td>
                       <td className="py-2 px-3 text-right font-mono" style={{ color: 'var(--text-2)' }}>{fold.n_test.toLocaleString()}</td>
-                      <td className="py-2 px-3 text-right font-mono" style={{ color: fold.accuracy > 0.55 ? '#0ecb81' : '#8B5CF6' }}>
+                      <td className="py-2 px-3 text-right font-mono" style={{ color: fold.accuracy > BACKTEST_ACCURACY_GOOD_THRESHOLD ? '#0ecb81' : '#8B5CF6' }}>
                         {(fold.accuracy * 100).toFixed(1)}%
                       </td>
-                      <td className="py-2 px-3 text-right font-mono" style={{ color: fold.auc > 0.55 ? '#0ecb81' : 'var(--text-2)' }}>
+                      <td className="py-2 px-3 text-right font-mono" style={{ color: fold.auc > BACKTEST_AUC_GOOD_THRESHOLD ? '#0ecb81' : 'var(--text-2)' }}>
                         {fold.auc.toFixed(4)}
                       </td>
                       <td className="py-2 px-3 text-right font-mono" style={{ color: 'var(--text-2)' }}>{fold.f1.toFixed(4)}</td>
                       <td className="py-2 px-3 text-right font-mono" style={{ color: 'var(--text-2)' }}>{fold.mcc.toFixed(4)}</td>
                       <td className="py-2 px-3 text-right font-mono" style={{ color: 'var(--text-2)' }}>{fold.gated_prod.n_trades.toLocaleString()}</td>
-                      <td className="py-2 pl-3 text-right font-mono" style={{ color: (fold.gated_prod.combined_precision ?? 0) > 0.65 ? '#0ecb81' : 'var(--text-2)' }}>
+                      <td className="py-2 pl-3 text-right font-mono" style={{ color: (fold.gated_prod.combined_precision ?? 0) > BACKTEST_PRECISION_GOOD_THRESHOLD ? '#0ecb81' : 'var(--text-2)' }}>
                         {fold.gated_prod.combined_precision != null ? `${(fold.gated_prod.combined_precision * 100).toFixed(1)}%` : '—'}
                       </td>
                     </tr>
@@ -412,12 +439,12 @@ export function BacktestPage() {
         <div className="rounded-xl p-5" style={card}>
           <div className="font-semibold text-sm mb-3" style={{ color: 'var(--text-1)' }}>Methodology</div>
           <div className="text-xs space-y-1.5 leading-relaxed" style={{ color: 'var(--text-2)' }}>
-            <div>• <strong>Walk-forward validation:</strong> 5 folds with expanding training window. Each fold tests on strictly future data the model never saw during training.</div>
-            <div>• <strong>Purge gap:</strong> 4 bars (= 1 hour) gap between train/val and val/test boundaries to prevent label leakage from forward-looking targets.</div>
+            <div>• <strong>Walk-forward validation:</strong> {foldCount} folds with expanding training window. Each fold tests on strictly future data the model never saw during training.</div>
+            <div>• <strong>Purge gap:</strong> {PURGE_GAP_BARS} bars (= {PURGE_GAP_LABEL}) gap between train/val and val/test boundaries to prevent label leakage from forward-looking targets.</div>
             <div>• <strong>Confidence gate:</strong> Only trades where P(UP) ≥ {(wf?.confidence_gate ?? DEFAULT_CONFIDENCE_GATE).toFixed(2)} or P(DOWN) ≤ {(1 - (wf?.confidence_gate ?? DEFAULT_CONFIDENCE_GATE)).toFixed(2)} are counted. This filters out low-conviction signals that degrade real-world performance.</div>
-            <div>• <strong>Paper trading fees:</strong> 0.10% round-trip per trade deducted from all P&amp;L calculations.</div>
-            <div>• <strong>Target:</strong> Triple-barrier — +2.0% take-profit vs −1.5% stop-loss vs end-of-horizon exit.</div>
-            <div>• <strong>Live paper trading:</strong> Runs every 15 minutes on real-time Binance data via the PM2 scheduler daemon.</div>
+            <div>• <strong>Paper trading fees:</strong> {paperFeePct.toFixed(2)}% round-trip per trade deducted from all P&amp;L calculations.</div>
+            <div>• <strong>Target:</strong> Triple-barrier — +{takeProfitPct.toFixed(1)}% take-profit vs −{stopLossPct.toFixed(1)}% stop-loss vs end-of-horizon exit.</div>
+            <div>• <strong>Live paper trading:</strong> Runs on the configured {ACTIVE_TIMEFRAME} cadence with real-time Binance data via the scheduler daemon.</div>
           </div>
         </div>
 

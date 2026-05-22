@@ -1,6 +1,6 @@
 import { useTradingStore } from '../store';
 import { parseSentimentLabel, signalAgeMinutes, SIGNAL_STALE_MINUTES } from '../utils/signal';
-import { DEFAULT_CONFIDENCE_GATE } from '../config';
+import { DEFAULT_CONFIDENCE_GATE, GUARDIAN_SPOOFING_THRESHOLD, SPOOFING_HIGH, SPOOFING_MEDIUM } from '../config';
 
 function Bar({ value, color, label }: { value: number; label: string; color: string }) {
   const pct = Math.min(100, Math.max(0, value * 100));
@@ -48,7 +48,8 @@ export function WhySignal() {
     );
   }
 
-  const action = signal.action ?? (signal as unknown as Record<string, unknown>).signal as string ?? 'HOLD';
+  const rawAction = signal.action ?? (signal as Record<string, unknown>)['signal'];
+  const action = typeof rawAction === 'string' ? rawAction : 'HOLD';
   const actionColor = action === 'BUY' ? '#0ecb81' : action === 'SELL' ? '#f6465d' : '#8B5CF6';
   const probUp = signal.classification_probability_up ?? 0;
   const probDown = signal.classification_probability_down ?? 0;
@@ -62,9 +63,9 @@ export function WhySignal() {
   const sentimentLabel = parseSentimentLabel(signal.reasoning?.sentiment ?? '');
   const sentimentColor = sentimentLabel === 'POSITIVE' ? '#0ecb81' : sentimentLabel === 'NEGATIVE' ? '#f6465d' : '#8B5CF6';
 
-  const spoofingBadgeStyle = spoofing >= 0.6
+  const spoofingBadgeStyle = spoofing >= SPOOFING_HIGH
     ? { color: 'var(--red)',    background: 'var(--red-bg)',    borderColor: 'var(--red-bd)'    }
-    : spoofing >= 0.3
+    : spoofing >= SPOOFING_MEDIUM
     ? { color: 'var(--accent)', background: 'var(--accent-bg)', borderColor: 'var(--accent-bd)' }
     : { color: 'var(--green)',  background: 'var(--green-bg)',  borderColor: 'var(--green-bd)'  };
 
@@ -105,7 +106,7 @@ export function WhySignal() {
           <div className="flex items-center justify-between mb-3">
             <div>
               <div className="font-semibold text-sm" style={{ color: 'var(--text-1)' }}>XGBoost Classifier</div>
-              <div className="text-xs" style={{ color: 'var(--text-3)' }}>43-feature model · 15-min horizon</div>
+              <div className="text-xs" style={{ color: 'var(--text-3)' }}>Configured classifier horizon</div>
             </div>
             <Gate passes={passesGate} gatePct={gatePct} />
           </div>
@@ -152,14 +153,14 @@ export function WhySignal() {
               <div className="text-xs" style={{ color: 'var(--text-3)' }}>Graph neural network on order book · veto weight</div>
             </div>
             <span className="px-2 py-0.5 rounded-full text-xs font-bold border" style={spoofingBadgeStyle}>
-              {spoofing >= 0.6 ? 'SUSPICIOUS' : spoofing >= 0.3 ? 'WARNING' : 'NORMAL'}
+              {spoofing >= SPOOFING_HIGH ? 'SUSPICIOUS' : spoofing >= SPOOFING_MEDIUM ? 'WARNING' : 'NORMAL'}
             </span>
           </div>
-          <Bar value={spoofing} color={spoofing >= 0.6 ? '#f6465d' : spoofing >= 0.3 ? '#8B5CF6' : '#0ecb81'} label="Spoofing confidence" />
+          <Bar value={spoofing} color={spoofing >= SPOOFING_HIGH ? '#f6465d' : spoofing >= SPOOFING_MEDIUM ? '#8B5CF6' : '#0ecb81'} label="Spoofing confidence" />
           <div className="mt-2 text-xs" style={{ color: 'var(--text-3)' }}>
-            {spoofing >= 0.6
-              ? '⚠ Spoofing veto active — BUY signals are blocked regardless of XGBoost output.'
-              : spoofing >= 0.3
+            {spoofing >= GUARDIAN_SPOOFING_THRESHOLD
+              ? 'Guardian spoofing block active.'
+              : spoofing >= SPOOFING_MEDIUM
               ? 'Warning level — BUY confidence reduced but not blocked.'
               : 'Market appears clean. No spoofing penalty applied.'}
           </div>

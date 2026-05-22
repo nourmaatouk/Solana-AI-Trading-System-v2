@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { socketService } from '../services/socket';
-import { useTradingStore } from '../store';
+import { useTradingStore, type ExecutionHistoryEntry } from '../store';
 import type { TickerData, KlineData, TradeData, DepthData, WatchlistItem, AISignalData } from '../types';
 
 interface TickerMsg { type: 'ticker'; symbol: string; data: TickerData }
@@ -12,6 +12,8 @@ interface DepthMsg { type: 'depth'; symbol: string; data: DepthData }
 interface WatchlistMsg { type: 'watchlist'; data: WatchlistItem[] }
 interface ConnectionMsg { type: 'connection'; status: 'connected' | 'reconnecting' | 'disconnected'; exchange: string }
 interface SignalMsg { type: 'signal'; data: AISignalData }
+interface ExecutionHistorySnapshotMsg { type: 'execution_history_snapshot'; data: ExecutionHistoryEntry[] }
+interface ExecutionUpdateMsg { type: 'execution_update'; data: ExecutionHistoryEntry }
 
 // selectedSymbol is the only reactive value this hook needs — it drives the
 // useEffect re-registration when the user changes timeframe/symbol.
@@ -73,6 +75,16 @@ export function useMarketSocket(): void {
       useTradingStore.getState().setSignal(msg.data);
     };
 
+    const onExecutionHistorySnapshot = (raw: unknown) => {
+      const msg = raw as ExecutionHistorySnapshotMsg;
+      useTradingStore.getState().setExecutionHistory(msg.data);
+    };
+
+    const onExecutionUpdate = (raw: unknown) => {
+      const msg = raw as ExecutionUpdateMsg;
+      useTradingStore.getState().prependExecutionEntry(msg.data);
+    };
+
     socketService.on('ticker', onTicker);
     socketService.on('kline', onKline);
     socketService.on('klines_snapshot', onKlinesSnapshot);
@@ -82,6 +94,8 @@ export function useMarketSocket(): void {
     socketService.on('watchlist', onWatchlist);
     socketService.on('connection', onConnection);
     socketService.on('signal', onSignal);
+    socketService.on('execution_history_snapshot', onExecutionHistorySnapshot);
+    socketService.on('execution_update', onExecutionUpdate);
 
     return () => {
       socketService.off('ticker', onTicker);
@@ -93,6 +107,8 @@ export function useMarketSocket(): void {
       socketService.off('watchlist', onWatchlist);
       socketService.off('connection', onConnection);
       socketService.off('signal', onSignal);
+      socketService.off('execution_history_snapshot', onExecutionHistorySnapshot);
+      socketService.off('execution_update', onExecutionUpdate);
     };
   }, [selectedSymbol]);
 }

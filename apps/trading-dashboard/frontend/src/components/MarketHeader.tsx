@@ -1,13 +1,8 @@
 import { useTradingStore } from '../store';
+import { parseMarketSymbol } from '../utils/symbol';
 
 function Skeleton({ w = 'w-16' }: { w?: string }) {
   return <div className={`h-4 ${w} rounded animate-pulse`} style={{ background: 'var(--border)' }} />;
-}
-
-function parseSymbol(raw: string) {
-  if (raw.endsWith('USDT')) return { base: raw.slice(0, -4), quote: 'USDT' };
-  if (raw.endsWith('BTC')) return { base: raw.slice(0, -3), quote: 'BTC' };
-  return { base: raw, quote: '' };
 }
 
 export function MarketHeader() {
@@ -15,7 +10,7 @@ export function MarketHeader() {
   const connectionStatus = useTradingStore((s) => s.connectionStatus);
   const exchange = useTradingStore((s) => s.exchange);
   const selectedSymbol = useTradingStore((s) => s.selectedSymbol);
-  const { base, quote } = parseSymbol(selectedSymbol);
+  const { base, quote } = parseMarketSymbol(selectedSymbol);
 
   const priceColor = ticker
     ? parseFloat(ticker.changePct) >= 0 ? 'var(--green)' : 'var(--red)'
@@ -49,7 +44,7 @@ export function MarketHeader() {
           { label: '24h Change', val: ticker ? `${parseFloat(ticker.changePct) >= 0 ? '+' : ''}${parseFloat(ticker.changePct).toFixed(2)}%` : null, color: priceColor },
           { label: '24h High',   val: ticker ? `$${parseFloat(ticker.high).toFixed(2)}`   : null, color: 'var(--text-1)' },
           { label: '24h Low',    val: ticker ? `$${parseFloat(ticker.low).toFixed(2)}`    : null, color: 'var(--text-1)' },
-          { label: '24h Volume', val: ticker ? `${parseFloat(ticker.volume).toLocaleString(undefined, { maximumFractionDigits: 0 })} SOL` : null, color: 'var(--text-1)' },
+          { label: '24h Volume', val: ticker ? `${parseFloat(ticker.volume).toLocaleString(undefined, { maximumFractionDigits: 0 })} ${base}` : null, color: 'var(--text-1)' },
           { label: '24h Quote Vol', val: ticker ? `$${(parseFloat(ticker.quoteVolume) / 1_000_000).toFixed(1)}M` : null, color: 'var(--text-1)' },
         ].map(({ label, val, color }) => (
           <div key={label} className="flex flex-col items-center">
