@@ -1,8 +1,9 @@
 import WebSocket, { WebSocketServer } from 'ws';
 import {
   ACTIVE_SYMBOL, ACTIVE_TIMEFRAME, KLINES_LIMIT, TIMEOUT_KLINES_MS,
-  MAX_TRADES, MAX_BINANCE_RETRIES, WS_RECONNECT_BASE_MS, WS_RECONNECT_MAX_MS,
-  WS_KLINE_RETRY_BASE_MS,
+  MAX_TRADES, MAX_BINANCE_RETRIES, KLINE_FETCH_MAX_RETRIES,
+  WS_RECONNECT_BASE_MS, WS_RECONNECT_MAX_MS, WS_KLINE_RETRY_BASE_MS,
+  WATCHLIST_SYMBOLS, QUOTE_ASSETS,
 } from '../config';
 
 // ── Interfaces ────────────────────────────────────────────────────────────────
@@ -102,13 +103,18 @@ const BINANCE_REST_HOST = process.env.BINANCE_REST_HOST ?? 'https://api.binance.
 const OKX_WS_URL        = process.env.OKX_WS_URL        ?? 'wss://ws.okx.com:8443/ws/v5/public';
 
 // Active trading symbol (no slash, lowercase) — e.g. "solusdt"
-const ACTIVE_STREAM_SYMBOL = (process.env.ACTIVE_SYMBOL ?? 'SOLUSDT').replace('/', '').toLowerCase();
+const ACTIVE_STREAM_SYMBOL = ACTIVE_SYMBOL.toLowerCase();
 
 // Watchlist symbols that get a ticker stream (comma-separated, no slash, lowercase)
-const WATCHLIST_STREAM_SYMBOLS = (process.env.WATCHLIST_SYMBOLS ?? 'btcusdt,ethusdt,bnbusdt,adausdt,xrpusdt')
-  .split(',')
-  .map(s => s.trim().toLowerCase())
+const WATCHLIST_STREAM_SYMBOLS = WATCHLIST_SYMBOLS
+  .map(s => s.toLowerCase())
   .filter(s => s && s !== ACTIVE_STREAM_SYMBOL);
+
+function toOkxInstId(symbol: string): string {
+  const normalized = symbol.replace('/', '').toUpperCase();
+  const quote = QUOTE_ASSETS.find((asset) => normalized.endsWith(asset));
+  return quote ? `${normalized.slice(0, -quote.length)}-${quote}` : normalized;
+}
 
 function buildBinanceUrl(klineInterval: string): string {
   const streams = [
@@ -154,8 +160,8 @@ export class BinanceWebSocketService {
     }
   }
 
-  async fetchHistoricalKlines(symbol: string, interval: string, limit = 500): Promise<boolean> {
-    for (let attempt = 1; attempt <= 3; attempt++) {
+  async fetchHistoricalKlines(symbol: string, interval: string, limit = KLINES_LIMIT): Promise<boolean> {
+    for (let attempt = 1; attempt <= KLINE_FETCH_MAX_RETRIES; attempt++) {
       try {
         const url = `${BINANCE_REST_HOST}/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
         const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_KLINES_MS) });
@@ -173,8 +179,8 @@ export class BinanceWebSocketService {
         console.log(`[binance] Loaded ${this.klines.length} historical ${interval} klines for ${symbol}`);
         return true;
       } catch (err) {
-        console.warn(`[binance] Kline fetch attempt ${attempt}/3 failed: ${(err as Error).message}`);
-        if (attempt < 3) await new Promise((r) => setTimeout(r, WS_KLINE_RETRY_BASE_MS * attempt));
+        console.warn(`[binance] Kline fetch attempt ${attempt}/${KLINE_FETCH_MAX_RETRIES} failed: ${(err as Error).message}`);
+        if (attempt < KLINE_FETCH_MAX_RETRIES) await new Promise((r) => setTimeout(r, WS_KLINE_RETRY_BASE_MS * attempt));
       }
     }
     console.error('[binance] All kline fetch attempts failed');
@@ -204,7 +210,7 @@ export class BinanceWebSocketService {
     this.ws = new WebSocket(OKX_WS_URL);
 
     this.ws.once('open', () => {
-      const okxInstId = ACTIVE_STREAM_SYMBOL.toUpperCase().replace('USDT', '-USDT');
+      const okxInstId = toOkxInstId(ACTIVE_STREAM_SYMBOL);
       console.log(`[okx] Connected — subscribing to ${okxInstId} ticker`);
       this.ws?.send(JSON.stringify({
         op: 'subscribe',

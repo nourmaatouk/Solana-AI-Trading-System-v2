@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { PYTHON_API, AUTH_HEADERS, TIMEOUT_DEFAULT_MS, TIMEOUT_LONG_MS } from '../config';
+import { ACTIVE_TIMEFRAME, PYTHON_API, AUTH_HEADERS, TIMEOUT_DEFAULT_MS, TIMEOUT_LONG_MS } from '../config';
 import { proxyGet, fetchJsonFromPython } from '../utils/pythonApi';
 
 export const aiRouter = Router();
@@ -59,7 +59,7 @@ aiRouter.get('/prediction', async (_req: Request, res: Response) => {
       confidence: data.confidence,
       classification_probability_up: data.classification_probability_up,
       classification_probability_down: data.classification_probability_down,
-      horizon: data.horizon ?? '15m',
+      horizon: data.horizon ?? ACTIVE_TIMEFRAME,
     });
   } catch (err) {
     res.status(503).json({ error: 'Python API unavailable', detail: String(err) });

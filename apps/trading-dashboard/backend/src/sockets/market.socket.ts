@@ -1,6 +1,7 @@
 import WebSocket from 'ws';
 import { BinanceWebSocketService } from '../services/binanceWebSocket.service';
 import { SignalPoller } from '../services/aiSignal.service';
+import { readExecutionHistory } from '../services/executionState.service';
 import { ACTIVE_SYMBOL, ACTIVE_TIMEFRAME, KLINES_LIMIT } from '../config';
 
 export function handleClientConnection(
@@ -35,6 +36,10 @@ export function handleClientConnection(
   if (signal) {
     ws.send(JSON.stringify({ type: 'signal', data: signal }));
   }
+
+  // Send execution history snapshot so the panel is populated immediately.
+  const execHistory = readExecutionHistory();
+  ws.send(JSON.stringify({ type: 'execution_history_snapshot', data: execHistory }));
 
   // Send connection status
   ws.send(JSON.stringify({
