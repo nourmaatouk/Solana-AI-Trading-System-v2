@@ -1,10 +1,11 @@
 import type { AISignalData } from '../types';
 import { API_TIMEOUT_GET_MS, API_TIMEOUT_POST_MS } from '../config';
+import { timeoutSignal } from '../utils/timeoutSignal';
 
 const BASE = '/api';
 
 async function get<T>(path: string, timeoutMs = API_TIMEOUT_GET_MS): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { signal: AbortSignal.timeout(timeoutMs) });
+  const res = await fetch(`${BASE}${path}`, { signal: timeoutSignal(timeoutMs) });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText })) as { error?: string };
     throw new Error(err.error ?? res.statusText);
@@ -17,7 +18,7 @@ async function post<T>(path: string, body?: unknown, timeoutMs = API_TIMEOUT_POS
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: body !== undefined ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(timeoutMs),
+    signal: timeoutSignal(timeoutMs),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText })) as { error?: string };

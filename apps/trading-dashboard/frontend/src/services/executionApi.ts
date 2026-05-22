@@ -6,6 +6,7 @@
  * a tsconfig with the execution package.
  */
 import { API_TIMEOUT_GET_MS, API_TIMEOUT_POST_MS } from '../config';
+import { timeoutSignal } from '../utils/timeoutSignal';
 
 const BASE = '/api';
 
@@ -81,7 +82,7 @@ export interface GuardianPolicyDto {
 }
 
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { signal: AbortSignal.timeout(API_TIMEOUT_GET_MS) });
+  const res = await fetch(`${BASE}${path}`, { signal: timeoutSignal(API_TIMEOUT_GET_MS) });
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error ?? res.statusText);
@@ -94,7 +95,7 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: body !== undefined ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(API_TIMEOUT_POST_MS),
+    signal: timeoutSignal(API_TIMEOUT_POST_MS),
   });
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { error?: string };
