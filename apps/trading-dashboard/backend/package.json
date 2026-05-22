@@ -2,18 +2,22 @@
   "name": "trading-dashboard-backend",
   "version": "0.1.0",
   "scripts": {
-    "dev": "ts-node-dev --respawn src/server.ts",
+    "dev": "cd ../../../services/execution && npm run build && cd - && ts-node-dev --respawn -r tsconfig-paths/register src/server.ts",
     "build": "tsc",
     "build:frontend": "cd ../frontend && npm run build",
     "build:all": "npm run build:frontend && npm run build",
-    "start": "node dist/server.js"
+    "start": "node -r tsconfig-paths/register dist/server.js"
   },
   "dependencies": {
+    "@solana/web3.js": "^1.95.0",
+    "bs58": "^6.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",
     "express": "^4.18.2",
     "node-fetch": "^3.3.2",
-    "ws": "^8.17.0"
+    "tsconfig-paths": "^4.2.0",
+    "ws": "^8.17.0",
+    "zod": "^3.23.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",

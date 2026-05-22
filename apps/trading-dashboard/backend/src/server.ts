@@ -9,8 +9,13 @@ import { WebSocketServer } from 'ws';
 import { aiRouter } from './routes/ai.routes';
 import { marketRouter } from './routes/market.routes';
 import { paperTradingRouter } from './routes/paperTrading.routes';
+import { executionRouter } from './routes/execution.routes';
+import { guardianRouter } from './routes/guardian.routes';
+import { walletRouter } from './routes/wallet.routes';
 import { BinanceWebSocketService } from './services/binanceWebSocket.service';
 import { SignalPoller } from './services/aiSignal.service';
+import { AutoExecutor } from './services/autoExecutor.service';
+import { executionEvents } from './services/executionEvents';
 import { handleClientConnection } from './sockets/market.socket';
 import { ACTIVE_SYMBOL, ACTIVE_TIMEFRAME, KLINES_LIMIT } from './config';
 
@@ -40,10 +45,29 @@ binanceService.fetchHistoricalKlines(ACTIVE_SYMBOL, ACTIVE_TIMEFRAME, KLINES_LIM
 const signalPoller = new SignalPoller(wss);
 signalPoller.start();
 
+// ── Auto-executor ──────────────────────────────────────────────────────────────
+const autoExecutor = new AutoExecutor(undefined, signalPoller);
+autoExecutor.start();
+
+// ── Execution event → WS broadcast ────────────────────────────────────────────
+function broadcastToAll(payload: unknown): void {
+  const msg = JSON.stringify(payload);
+  wss.clients.forEach((client) => {
+    if (client.readyState === 1 /* OPEN */) client.send(msg);
+  });
+}
+
+executionEvents.on('execution_update', (entry) => {
+  broadcastToAll({ type: 'execution_update', data: entry });
+});
+
 // ── Routes ─────────────────────────────────────────────────────────────────────
 app.use('/api/ai', aiRouter);
 app.use('/api/market', marketRouter(binanceService));
 app.use('/api/paper-trading', paperTradingRouter);
+app.use('/api/execution', executionRouter);
+app.use('/api/guardian', guardianRouter);
+app.use('/api/wallet', walletRouter);
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'trading-dashboard-backend', port: PORT });
