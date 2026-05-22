@@ -11,6 +11,14 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Opt every job into Node.js 24 for JavaScript-based actions (actions/checkout@v4,
+# actions/setup-python@v5, etc.). GitHub deprecated the Node 20 runtime on
+# 2026-06-02; without this flag the runner emits a warning on every job. Set at
+# workflow scope so all jobs inherit it without per-job duplication.
+# See: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   # ── 1. XGBoost classification pipeline ──────────────────────────────────────
   test-classification:
