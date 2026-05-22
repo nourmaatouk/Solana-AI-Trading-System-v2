@@ -91,11 +91,13 @@ module.exports = {
       restart_delay: 5000,
       max_restarts: 20,
       env: {
-        ...DOT_ENV,
-        NODE_ENV: 'production',
-        PORT: '3001',
+        // Defaults — overridden by anything set in .env (spread below).
         PYTHON_API: 'http://localhost:8000',
         REALTIME_DIR: `${REPO}/services/models/classification/data/realtime`,
+        ...DOT_ENV,
+        // Hard overrides — these are deploy-time invariants for PM2 production mode.
+        NODE_ENV: 'production',
+        PORT: '3001',
       },
     },
   ],

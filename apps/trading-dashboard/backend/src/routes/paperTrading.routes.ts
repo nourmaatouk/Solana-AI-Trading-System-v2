@@ -15,14 +15,26 @@ paperTradingRouter.post('/execute', async (req: Request, res: Response) => {
     const { default: fetch } = await import('node-fetch');
     const body = req.body as Record<string, unknown>;
 
-    // Persist risk_level so the paper trader uses it on the next run
+    // Persist risk_level so the paper trader uses it on the next run.
+    // If persistence fails, surface the error instead of silently triggering
+    // a pipeline run with a stale risk preference. Network errors and
+    // timeouts propagate to the outer catch which returns 503.
     if (body.risk_level) {
-      await fetch(`${PYTHON_API}/preferences`, {
+      const prefRes = await fetch(`${PYTHON_API}/preferences`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...AUTH_HEADERS },
         body: JSON.stringify({ risk_level: String(body.risk_level).toLowerCase() }),
         signal: AbortSignal.timeout(TIMEOUT_PREFS_MS),
-      }).catch(() => null);
+      });
+      if (!prefRes.ok) {
+        const detail = await prefRes.text().catch(() => prefRes.statusText);
+        console.error(`[paper-trading] preferences save failed (${prefRes.status}): ${detail}`);
+        res.status(503).json({
+          error: 'preferences_save_failed',
+          detail: `Risk preference could not be saved (Python API returned ${prefRes.status}). Pipeline not triggered.`,
+        });
+        return;
+      }
     }
 
     const r = await fetch(`${PYTHON_API}/scheduler/run`, {
