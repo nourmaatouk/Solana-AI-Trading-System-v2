@@ -58,6 +58,19 @@ services/models/models/
 **/data/raw/
 **/data/processed/
 **/data/logs/
+# Runtime state for the execution layer lives under **/data/realtime/ and is
+# intentionally per-environment. Anything in this directory is ignored,
+# including the files the dashboard writes at runtime:
+#   - emergency_stop.json
+#   - auto_execute.json
+#   - user_risk_level.json
+#   - max_trade_size_sol.json
+#   - executed_signal_keys.json
+#   - daily_volume.json
+#   - last_execution.json
+#   - execution_history.jsonl
+#   - paper_trading_*.json
+#   - last_fused_decision.json (written by the Python pipeline)
 **/data/realtime/
 **/data/cache/
 services/models/nlp/data/
