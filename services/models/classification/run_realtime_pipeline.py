@@ -80,9 +80,15 @@ def build_steps(args: argparse.Namespace) -> list[PipelineStep]:
         [
             PipelineStep("feature_merge", BASE_DIR / "realtime_merge_features.py"),
             PipelineStep("predictor", BASE_DIR / "realtime_predictor.py"),
-            PipelineStep("rl_predictor", BASE_DIR.parent / "rl" / "realtime_rl_predictor.py", critical=False),
         ]
     )
+
+    # When fusion_aggregate is active the rl_predictor must run AFTER
+    # fusion_aggregate so it reads the current last_fused_decision.json
+    # (required for the 56-dim fusion-v2 PPO model).  Without fusion it
+    # runs here using only XGBoost signal (legacy / aligned model).
+    if not (args.fusion_aggregate or args.paper_trade):
+        steps.append(PipelineStep("rl_predictor", BASE_DIR.parent / "rl" / "realtime_rl_predictor.py", critical=False))
 
     if not args.skip_dashboard:
         steps.append(PipelineStep("dashboard", BASE_DIR / "22_realtime_classifier_dashboard.py", critical=False))
@@ -100,6 +106,11 @@ def build_steps(args: argparse.Namespace) -> list[PipelineStep]:
 
     if args.fusion_aggregate:
         steps.append(PipelineStep("fusion_aggregate", BASE_DIR / "realtime_fusion_aggregator.py", critical=False))
+
+    # Fusion-aware placement: runs after fusion_aggregate so the 56-dim
+    # fusion-v2 PPO model receives the current fused_score and risk_encoded.
+    if args.fusion_aggregate or args.paper_trade:
+        steps.append(PipelineStep("rl_predictor", BASE_DIR.parent / "rl" / "realtime_rl_predictor.py", critical=False))
 
     if args.paper_trade:
         steps.append(PipelineStep("paper_trader", BASE_DIR / "realtime_paper_trader.py", critical=False))

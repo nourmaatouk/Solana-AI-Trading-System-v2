@@ -67,7 +67,7 @@ _fc_path = FUSION_SRC.parent / "config.py"
 _fc_spec = _ilu.spec_from_file_location("fusion.config", _fc_path)
 _fc_mod  = _ilu.module_from_spec(_fc_spec)
 _fc_spec.loader.exec_module(_fc_mod)
-WEIGHT_RL = float(getattr(_fc_mod, "WEIGHT_RL", 0.30))
+WEIGHT_RL = float(getattr(_fc_mod, "WEIGHT_RL", 0.00))
 
 _AGGREGATOR = FusionAggregator()
 
