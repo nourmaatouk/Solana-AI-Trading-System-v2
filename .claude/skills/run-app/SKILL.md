@@ -1,6 +1,6 @@
 ---
 name: run-app
-description: Launch and drive the Solvanta AI trading dashboard end-to-end — Node backend (Express + WebSocket on :3001) plus the Vite frontend (:5173). Use this when asked to run, start, launch, or screenshot the app, or to verify a change works in the real running stack rather than just tests. Also covers the rebuild ordering between services/execution and the backend.
+description: Launch and drive the Solvanta AI trading dashboard end-to-end — Node backend (Express + WebSocket on :3001) plus the Vite frontend (:5174). Use this when asked to run, start, launch, or screenshot the app, or to verify a change works in the real running stack rather than just tests. Also covers the rebuild ordering between services/execution and the backend.
 ---
 
 # Running the Solvanta AI Trading Dashboard
@@ -9,7 +9,7 @@ The project is a three-piece stack:
 
 - `services/execution` — TypeScript library, compiles to `dist/`. The Node backend imports it via the path alias `@trading/execution` → `services/execution/dist/index`. **Stale dist is a real footgun:** the backend will silently run old Guardian / workflow code if you forget to rebuild here first.
 - `apps/trading-dashboard/backend` — Express + WebSocket server on port `3001`. Serves `/api/*` routes and (in production) the built frontend at `/`.
-- `apps/trading-dashboard/frontend` — Vite + React. Dev server on `:5173` proxies `/api/*` and `/ws` to the backend.
+- `apps/trading-dashboard/frontend` — Vite + React. Dev server on `:5174` (the project's `vite.config.ts` overrides Vite's default 5173) proxies `/api/*` and `/ws` to the backend.
 
 A Python FastAPI service at `:8000` is referenced by `PYTHON_API` for live signal data. The dashboard runs without it — pages render, state files work, Guardian-policy reads work — but `POST /api/execution/validate` and `/execute` return `{error: "validation_failed", detail: "fetch failed"}` until it's up. Launch it with:
 
@@ -53,10 +53,10 @@ If you see `EADDRINUSE` on 3001, an old `ts-node-dev` is still running — `pkil
 
 ```bash
 cd /home/nourmaatouk/Solana-AI-Trading-System/apps/trading-dashboard/frontend
-npx vite --port 5173 --host 127.0.0.1
+npx vite --port 5174 --host 127.0.0.1
 ```
 
-Wait for: `VITE v5.x ready` and `Local: http://127.0.0.1:5173/`.
+Wait for: `VITE v5.x ready` and `Local: http://127.0.0.1:5174/`.
 
 ### 4. Smoke-test the chain
 
@@ -64,8 +64,8 @@ These are the calls I trust to prove "the app is actually running" — they exer
 
 ```bash
 curl -s http://localhost:3001/health
-curl -s http://127.0.0.1:5173/api/execution/auto-execute/status
-curl -s http://127.0.0.1:5173/api/guardian/policy | python3 -m json.tool
+curl -s http://127.0.0.1:5174/api/execution/auto-execute/status
+curl -s http://127.0.0.1:5174/api/guardian/policy | python3 -m json.tool
 ```
 
 | What | Expected |
@@ -79,11 +79,11 @@ curl -s http://127.0.0.1:5173/api/guardian/policy | python3 -m json.tool
 ```bash
 chromium --headless --disable-gpu --no-sandbox --hide-scrollbars \
   --window-size=1400,1100 --virtual-time-budget=4000 \
-  --screenshot=/tmp/dashboard.png "http://127.0.0.1:5173/"
+  --screenshot=/tmp/dashboard.png "http://127.0.0.1:5174/"
 
 chromium --headless --disable-gpu --no-sandbox --hide-scrollbars \
   --window-size=1400,1100 --virtual-time-budget=4000 \
-  --screenshot=/tmp/execution.png "http://127.0.0.1:5173/execution"
+  --screenshot=/tmp/execution.png "http://127.0.0.1:5174/execution"
 ```
 
 Read the screenshots with the Read tool. **A blank or all-dark frame is a failure** — the dev server probably hasn't finished compiling yet; wait another 2 seconds and retry.

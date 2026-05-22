@@ -60,13 +60,14 @@ Layer 3 — Models
 
 Layer 4 — Agent Layer
   ├── Paper trader          (simulator — implemented)
-  ├── RL execution agent    (PPO/DQN — not yet implemented)
-  ├── ElizaOS orchestrator  (planned)
+  ├── RL execution agent    (PPO — trained, currently disabled in fusion)
+  ├── ElizaOS orchestrator  (implemented as post-decision narrator; never on critical path)
   ├── Ollama Llama 3        (planned)
   └── ChromaDB memory       (planned)
 
 Layer 5 — Execution
-  └── Solana execution layer (Solana Agent Kit — planned)
+  └── Solana execution layer (TypeScript Guardian + AutoExecutor + Phantom signing — implemented;
+                              on-chain Anchor Guardian — planned)
 ```
 
 ---
@@ -142,7 +143,8 @@ services/models/
 ├── integration/             # End-to-end integration tests
 ├── scripts/                 # Utility / validation scripts
 ├── tests/                   # Cross-cutting audit tests (security, ML quality)
-├── rl/                      # RL execution agent (stub — not yet implemented)
+├── rl/                      # RL execution agent — PPO trained (2M+ steps), currently
+│                            # disabled in fusion (WEIGHT_RL=0.0) due to OOS regime mismatch
 ├── spatial/                 # GNN spatial encoder (stub — not yet implemented)
 └── temporal/                # TEN temporal encoder (stub — not yet implemented)
 ```
@@ -159,8 +161,8 @@ services/models/
 | `spoofing_detection/` | 3 | Research prototype | Realtime Hawkes/TEN gate works; labels are synthetic/research-grade |
 | `spatial/` | 3 | Stub | GNN architecture — not yet implemented |
 | `temporal/` | 3 | Stub | LSTM/Transformer — not yet implemented |
-| `rl/` | 4 | Not implemented | PPO/DQN execution agent |
-| Paper trader | 4 | **Operational simulator** | Consumes `last_fused_decision.json`; no real trades |
+| `rl/` | 4 | **Trained, disabled in production** | PPO trained for 2M+ steps; three model variants in `models/`. Fusion config sets `WEIGHT_RL=0.0` due to out-of-sample regime mismatch (val Sharpe 1.926, test Sharpe –0.308). Runs every cycle and writes `last_rl_signal.json` but the fusion aggregator ignores it. See `rl/README.md` and the PPO Redesign note for details. |
+| Paper trader | 4 | **Operational simulator** | Consumes `last_fused_decision.json`; no real trades. Includes its own pre-trade Python Guardian (`classification/guardian_agent.py`) distinct from the TypeScript Guardian in `services/execution/`. |
 
 ---
 
