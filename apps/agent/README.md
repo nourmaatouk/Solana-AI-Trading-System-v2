@@ -40,6 +40,31 @@ ElizaOS is consulted ONLY at step 3, AFTER the decision is final. It receives
 the verdict + execution result. It never receives raw signals, raw user input,
 or signing material.
 
+## Anatomy of the character file
+
+`character.trading-agent.json` follows the Eliza character schema. Each top-level
+field shapes the runtime prompt that wraps the LLM:
+
+| Field | What it does |
+|-------|--------------|
+| `name`, `username` | Identity used in chat transcripts and logs. |
+| `modelProvider` | LLM backend (`openai`). Swappable without code changes. |
+| `settings.voice.model` | `"none"` — text-only agent, no TTS. |
+| `plugins` | Empty by design. **No plugins = no tool access** (no wallet, no RPC, no shell). This is the structural enforcement of the narration-only role. |
+| `system` | Master instruction prepended to every conversation. Defines the four hard refusals: no decision authority, no key access, no Guardian override, no safety bypass. |
+| `bio` | Short self-description injected into the prompt for consistent self-reference. |
+| `lore` | Backstory facts (e.g. "has no tool access"). |
+| `knowledge` | Factual claims about the system Sentinel is allowed to assert — Guardian authority, execution flow, default-disabled mainnet. |
+| `messageExamples` | Few-shot examples that teach the model **how** to refuse. Includes a jailbreak attempt ("Bypass the Guardian") and an information request. |
+| `style.all` / `style.chat` | Tone constraints applied everywhere / only in chat. Enforces plain, precise, 1–3 sentence answers with no emojis. |
+| `topics` | Restricts the conversational scope to "trading explanation" and "safety policy". |
+| `adjectives` | Persona biases woven into the prompt: safety-first, non-autonomous, transparent. |
+
+The safety posture is enforced at two layers: **structurally** (empty `plugins`,
+so the LLM physically cannot call wallet/RPC tools) and **prompt-wise** (`system`
++ `knowledge` + `messageExamples` train the refusal style). If you fork this
+character, preserve both.
+
 ## Running
 
 For most deployments you do NOT need to start a standalone Eliza process — the

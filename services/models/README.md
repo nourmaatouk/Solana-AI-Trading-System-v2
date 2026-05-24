@@ -333,9 +333,6 @@ features.
 Detailed two-terminal runbook:
 `classification/run_realtime_orderbook_then_pipeline.md`.
 
-Production-style systemd setup:
-`../../infra/systemd/README.md`.
-
 The XGBoost predictor writes `data/realtime/last_signal.json`:
 
 ```json
@@ -384,12 +381,9 @@ python -m pytest nlp/tests/ -q
 # Fusion + spoofing detection tests
 python -m pytest fusion/tests/ spoofing_detection/tests/ -q
 
-# Cross-cutting security and ML quality audit
+# Cross-cutting ML quality invariants
 python -m pytest tests/ -q
 ```
-
-GitHub Actions exists at `.github/workflows/ci.yml` with separate jobs for
-classification, NLP, fusion/spoofing, audit tests, and ruff.
 
 ---
 
@@ -452,4 +446,3 @@ Non-stationary columns (raw price levels, absolute MAs) are excluded by `NON_STA
 - **Hawkes MLE is a realtime gate only**: It is implemented in `realtime_spoofing_detector.py`, but not yet validated as a historical training feature.
 - **RL, spatial, temporal stubs**: `rl/`, `spatial/`, `temporal/` directories contain only README files.
 - **Reddit fetcher unvalidated at scale**: The unauthenticated Reddit JSON endpoint has undocumented rate limits.
-- **CI exists but should be monitored**: `.github/workflows/ci.yml` is present; hosted runs should be watched until dependency/cache behavior is stable.

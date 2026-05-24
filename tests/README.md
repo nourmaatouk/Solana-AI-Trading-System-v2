@@ -21,5 +21,3 @@ python -m pytest services/models/nlp/tests/ -v
 python -m pytest services/models/fusion/tests/ -v
 python -m pytest services/models/spoofing_detection/ -v
 ```
-
-CI runs on every push via `.github/workflows/ci.yml`.

@@ -2,7 +2,7 @@
 realtime_sentiment_daemon.py
 
 Long-running sentiment refresh daemon.  Run this as a supervised process
-(systemd, screen, or Docker) before starting the 15-minute pipeline cron.
+(for example under PM2 or screen) before starting the 15-minute pipeline cron.
 
 Every --interval seconds (default 900 = 15 min) the daemon calls
 realtime_sentiment_fetcher.py as a subprocess and writes:

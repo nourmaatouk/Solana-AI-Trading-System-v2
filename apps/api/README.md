@@ -97,4 +97,4 @@ The realtime data directory is hardcoded to `services/models/classification/data
 python -m pytest apps/api/tests/ -v
 ```
 
-These tests cover endpoint shapes against fixture JSON files. They are **not** currently run in CI (`.github/workflows/ci.yml`).
+These tests cover endpoint shapes against fixture JSON files.

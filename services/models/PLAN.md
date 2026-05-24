@@ -24,7 +24,6 @@
 | Fusion aggregator (weighted score) | Operational via `--fusion-aggregate` |
 | Paper trading simulator | Operational; consumes `last_fused_decision.json` |
 | Realtime Hawkes/TEN spoofing gate | Operational but research-grade |
-| GitHub Actions CI workflow | Present in `.github/workflows/ci.yml` |
 
 ### What does not exist yet
 
@@ -58,7 +57,6 @@
 | `nlp/src` + `spoofing_detection/src` namespace collision silently breaks tests | Test reliability | **Fixed** — conftest guard + documented invocations |
 | `nlp/` had 5 FinBERT test errors (MockModel missing `.to()` and tensor inputs) | Test suite unreliable | **Fixed** |
 | `integration/validate_kaggle_notebook.py` hardcoded `/home/nourmaatouk/...` path | Breaks on other machines | **Fixed** |
-| CI workflow coverage | Regressions not caught automatically if CI is missing | **Fixed** — `.github/workflows/ci.yml` added |
 | Realtime orderbook path stale/missing columns | XGBoost/dashboard/fusion/spoofing degraded | **Fixed** — Binance partial-depth collector validated with all 7 trained columns |
 
 ---
@@ -79,10 +77,9 @@
 - [x] Wire fusion aggregator (`realtime_fusion_aggregator.py`, `--fusion-aggregate` flag) + `test_fusion_aggregator.py`
 - [x] Fix `TIMESCALE_DSN` default password removed
 - [x] Guard `src` namespace collision in top-level conftest
-- [x] Add CI workflow (`.github/workflows/ci.yml`) that runs separate pytest invocations
 
 **Acceptance criteria:**  
-Separate pytest invocations pass locally/CI. Do not run all model suites in one
+Separate pytest invocations pass locally. Do not run all model suites in one
 pytest process because of the `src` namespace collision.
 
 ---
@@ -100,10 +97,8 @@ pytest process because of the `src` namespace collision.
 - [x] Add rich `orderbook_status.json` service health contract
 - [x] Add realtime pipeline `orderbook_preflight` gate before model scoring
 - [x] Add orderbook + pipeline runbook (`classification/run_realtime_orderbook_then_pipeline.md`)
-- [x] Add systemd service template and install docs (`infra/systemd/`)
 - [x] Validate realtime pipeline with fresh orderbook:
   `--skip-sentiment --fusion --fusion-aggregate --paper-trade --timeout 60`
-- [ ] Install/enable the systemd service on the target host before cron
 - [ ] Re-collect a longer orderbook history while the WebSocket collector is live; retrain H4 model with real orderbook features and re-evaluate feature importance
 - [ ] Decide whether `services/ingest/connectors/binance_orderbook.py` should be removed or retained as an ingest-layer duplicate
 - [ ] Validate/finish `03_hawkes_intensity.py` as a historical Layer 2 feature, separate from the realtime spoofing gate
@@ -178,48 +173,37 @@ pytest process because of the `src` namespace collision.
 | Spoofing model fails on real data (trained synthetic) | High | False positives | Kept non-critical in pipeline (`critical=False`); validate on real data before promoting |
 | FinBERT/GDELT latency or rate limiting | High | Full live sentiment step can timeout | Use cached sentiment path for local validation; raise timeout or split sentiment into daemon |
 | Walk-forward accuracy decays over time (regime shift) | Medium | Poor live performance | Scheduled monthly retraining; monitor confidence distribution |
-| CI dependency/cache failures | Medium | False red builds | Keep jobs split; monitor first hosted runs |
 
 ---
 
-## CI Checks
+## Local Test Invocations
 
-```yaml
-# .github/workflows/ci.yml
-# NOTE: nlp/src and spoofing_detection/src both expose a top-level `src`
-# package.  They must run in separate pytest invocations to avoid the
-# sys.modules['src'] namespace collision.
-jobs:
-  test-classification:
-    steps:
-      - pip install -r services/models/classification/requirements.txt pytest
-      - pytest services/models/classification/tests/ -v
+`nlp/src` and `spoofing_detection/src` both expose a top-level `src` package, so
+they must run in separate pytest invocations to avoid the
+`sys.modules['src']` namespace collision.
 
-  test-nlp:
-    steps:
-      - pip install -r services/models/nlp/requirements.txt pytest
-      - pytest services/models/nlp/tests/ -v
+```bash
+# classification
+pip install -r services/models/classification/requirements.txt pytest
+pytest services/models/classification/tests/ -v
 
-  test-fusion-spoofing:
-    steps:
-      - pip install torch --index-url https://download.pytorch.org/whl/cpu
-      - pip install scipy numpy pandas xgboost scikit-learn pytest
-      - pytest services/models/fusion/tests/ services/models/spoofing_detection/tests/ -v
+# nlp
+pip install -r services/models/nlp/requirements.txt pytest
+pytest services/models/nlp/tests/ -v
 
-  test-audit:
-    steps:
-      - pip install xgboost scikit-learn joblib pydantic pydantic-settings pytest
-      - pytest services/models/tests/ -v   # security + ML quality audit
-  
-  lint:
-    steps:
-      - ruff check services/ apps/ --exclude ml_env
+# fusion + spoofing
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+pip install scipy numpy pandas xgboost scikit-learn pytest
+pytest services/models/fusion/tests/ services/models/spoofing_detection/tests/ -v
+
+# ML quality invariants
+pip install xgboost scikit-learn joblib pydantic pydantic-settings pytest
+pytest services/models/tests/ -v
 ```
 
-Key invariants to gate on CI:
+Key invariants to verify:
 - All test suites pass, with any expected skips/xfails explicitly documented
 - `feature_columns.json` matches the feature count of all three XGBoost models
   and the active realtime count is 47
 - Scaler dimension matches model input dimension
-- No hardcoded secrets or absolute paths (audit test suite)
 - No shuffle before chronological split in training scripts

@@ -30,7 +30,6 @@ AI-powered cryptocurrency trading system targeting SOL/USDT on Solana. The full 
 | Phantom wallet signing | ✅ Working | Frontend `useAutoExecution` hook; backend never signs in phantom mode |
 | Paper / devnet execution | ✅ Working | Paper simulates; devnet uses Solana RPC + optional Jupiter swap |
 | `ElizaOS` narrator | ✅ Working | Post-decision narration only — never on critical path |
-| CI pipeline | ⚠️ Python only | `.github/workflows/ci.yml` does not run TypeScript / Guardian tests yet |
 | Mainnet execution | ⏳ Gated | `ALLOW_MAINNET_EXECUTION=false` by default; explicit env opt-in required |
 | On-chain Anchor Guardian | ⏳ Planned | Off-chain Guardian feeds the same contract once deployed |
 | Solana Agent Kit plugins | ⏳ Planned | Phase 6 |
@@ -208,19 +207,12 @@ src/
 - `docs/adr/` — Architecture decision records.
 - `docs/runbooks/` — Operational notes.
 
-### `infra/`
-- `infra/systemd/` — Orderbook-collector service template (only systemd file in the repo).
-- `infra/docker`, `k8s`, `terraform`, `scripts` — Planned.
-
 ### `data/`
 - `raw/` and `processed/` — Training / engineered CSVs.
 - `model_artifacts/` — Stub directories; actual artifacts live next to each model in `services/models/`.
 
 ### `.claude/`
 - `skills/run-app/SKILL.md` — Verified launch + smoke-test sequence; used when the user asks an assistant to "run the app."
-
-### `.github/workflows/ci.yml`
-Runs the Python test suites (classification, NLP, fusion, spoofing) and ruff linting. **Does not currently run the TypeScript execution tests, backend tests, or the FastAPI tests** — those have to be run locally.
 
 ---
 
@@ -305,8 +297,8 @@ last_execution.json + execution_history.jsonl + WS broadcast → dashboard
 | `services/execution` Guardian unit tests | 47 | ✅ |
 | `services/execution` end-to-end integration tests | 16 | ✅ |
 | `apps/trading-dashboard/backend` AutoExecutor flow | 9 | ✅ |
-| Python classification + NLP + fusion + spoofing | (run locally / in CI) | ✅ |
-| `apps/api/tests/` (FastAPI) | (not in CI) | local only |
+| Python classification + NLP + fusion + spoofing | (run locally) | ✅ |
+| `apps/api/tests/` (FastAPI) | (run locally) | local only |
 
 ---
 

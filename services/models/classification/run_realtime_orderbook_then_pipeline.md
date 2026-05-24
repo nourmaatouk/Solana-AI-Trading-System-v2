@@ -61,14 +61,3 @@ Before model scoring, `run_realtime_pipeline.py` checks
 `orderbook_status.json`. If the collector is stopped, disconnected, missing, or
 stale, the pipeline stops before XGBoost/fusion/spoofing and writes a degraded
 reason to `last_pipeline_run.json`.
-
-## systemd
-
-For a persistent supervised service, use the systemd files in:
-
-```text
-infra/systemd/
-```
-
-See `infra/systemd/README.md` for install, start, stop, status, restart, and
-log commands.
