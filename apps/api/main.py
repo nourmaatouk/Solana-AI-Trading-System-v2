@@ -321,6 +321,12 @@ def get_signal_breakdown() -> dict[str, Any]:
     _score_m = _re.search(r'\(([-\d.]+)\)', raw_sent)
     sent_score = float(_score_m.group(1)) if _score_m else None
 
+    # event_type / high_impact: prefer the structured fields written by the
+    # fusion aggregator; fall back to parsing the reasoning string for older JSON.
+    _event_m = _re.search(r'event=(\S+)', raw_sent)
+    sent_event_type = fused.get("event_type") or (_event_m.group(1) if _event_m else None)
+    sent_high_impact = bool(fused.get("high_impact_event", False))
+
     return {
         "action": fused.get("action") or fused.get("signal", "HOLD"),
         "fused_score": fused.get("fused_score"),
@@ -335,6 +341,8 @@ def get_signal_breakdown() -> dict[str, Any]:
         "sentiment": {
             "label": sent_label,
             "score": sent_score,
+            "event_type": sent_event_type,
+            "high_impact": sent_high_impact,
             "reasoning": raw_sent,
         },
         "spoofing": {

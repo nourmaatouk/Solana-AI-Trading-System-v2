@@ -1,7 +1,8 @@
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Outlet, useLocation } from 'react-router-dom';
 import { useEffect } from 'react';
 import { useMarketSocket } from './hooks/useMarketSocket';
 import { useTradingStore } from './store';
+import { LandingPage } from './pages/LandingPage';
 import { Dashboard } from './pages/Dashboard';
 import { LiveMarket } from './pages/LiveMarket';
 import { WhySignal } from './pages/WhySignal';
@@ -16,6 +17,11 @@ import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { ErrorBanner } from './components/ErrorBanner';
 
+/**
+ * Layout for the authenticated/app surface: sidebar + top bar chrome wrapping
+ * the active page (rendered via <Outlet/>). The public landing page at `/`
+ * lives outside this layout so it renders full-screen.
+ */
 function AppLayout() {
   useMarketSocket();
   const { pathname } = useLocation();
@@ -35,18 +41,7 @@ function AppLayout() {
         {!isMarket && <TopBar />}
         {!isMarket && <ErrorBanner />}
         <main className="flex-1 overflow-hidden flex flex-col min-h-0">
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/market" element={<LiveMarket />} />
-            <Route path="/why" element={<WhySignal />} />
-            <Route path="/alerts" element={<AlertsPage />} />
-            <Route path="/trade" element={<TradePage />} />
-            <Route path="/how" element={<HowItWorks />} />
-            <Route path="/status" element={<SystemStatus />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/backtest" element={<BacktestPage />} />
-            <Route path="/execution" element={<ExecutionPanel />} />
-          </Routes>
+          <Outlet />
         </main>
       </div>
     </div>
@@ -56,7 +51,24 @@ function AppLayout() {
 function App() {
   return (
     <BrowserRouter>
-      <AppLayout />
+      <Routes>
+        {/* Public landing page — full screen, no app chrome */}
+        <Route path="/" element={<LandingPage />} />
+
+        {/* Dashboard app — wrapped in the sidebar/top-bar layout */}
+        <Route element={<AppLayout />}>
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/market" element={<LiveMarket />} />
+          <Route path="/why" element={<WhySignal />} />
+          <Route path="/alerts" element={<AlertsPage />} />
+          <Route path="/trade" element={<TradePage />} />
+          <Route path="/how" element={<HowItWorks />} />
+          <Route path="/status" element={<SystemStatus />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/backtest" element={<BacktestPage />} />
+          <Route path="/execution" element={<ExecutionPanel />} />
+        </Route>
+      </Routes>
     </BrowserRouter>
   );
 }

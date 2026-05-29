@@ -6,11 +6,11 @@ User-facing applications for the Solana AI Trading System.
 
 | Directory | Status | Description |
 |-----------|--------|-------------|
-| `api/` | ✅ Implemented | FastAPI backend — read-only signal and status endpoints |
-| `trading-dashboard/` | ✅ Implemented | Node.js + React — live Binance WS, candlestick chart, order book |
-| `agent/` | ⏳ Empty stub | Reserved for the ElizaOS orchestration layer (Phase 5); no code yet |
+| `api/` | ✅ Implemented | FastAPI backend — monitoring + scoped control endpoints for the realtime pipeline |
+| `trading-dashboard/` | ✅ Implemented | Node.js + React — live Binance WS, candlestick chart, order book, AI signals, paper trading |
+| `agent/` | ✅ Implemented | ElizaOS "Sentinel" narration character. The runtime is embedded in `services/execution` (post-decision narration only). |
 
 ## What is not implemented
 
-- **Agent autonomy** — `apps/agent/` has no orchestrator, no plugin system, no memory layer, and no reasoning engine. Planned for Phase 5.
-- **WebSocket push for signals** — the trading-dashboard has live market WS from Binance/OKX, but the AI signal layer still polls (10–30 s).
+- **Agent autonomy** — the agent narrates decisions only. It has no plugins, no tool access, and cannot decide, approve, or execute trades (the Guardian + execution layer own that). There is no standalone memory or reasoning engine.
+- **On-chain data ingestion** — no OpenBook/Helius connectors yet; market data comes from Binance (with OKX fallback) and the order-book WebSocket.

@@ -21,6 +21,15 @@ WEIGHT_GNN: float = 0.05
 # When the RL model has not been trained yet, the base score is used unchanged.
 WEIGHT_RL: float = 0.00  # disabled: val Sharpe=1.926 but test Sharpe=-0.308 (regime mismatch)
 
+# When True, the live realtime fusion takes its final BUY/SELL/HOLD action
+# DIRECTLY from the PPO agent — PPO is the decision-maker and XGBoost/FinBERT/
+# TEN-GNN/GNN become advisory context only (WEIGHT_RL is bypassed for action
+# selection). The spoofing HOLD veto and the downstream Guardian still apply.
+# Set False to revert to weighted-score fusion.
+# NOTE: PPO underperforms out-of-sample (test Sharpe -0.31) — enabling this
+# trades on a model that did not generalise. Intended for paper / demonstration.
+RL_OWNS_ACTION: bool = True
+
 # ── Fused-score action thresholds ────────────────────────────────────────────
 # fused_score > BUY_THRESHOLD  → BUY
 # fused_score < -SELL_THRESHOLD → SELL

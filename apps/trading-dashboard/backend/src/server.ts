@@ -79,7 +79,10 @@ wss.on('connection', (ws) => {
 });
 
 // ── Static frontend (production build) ────────────────────────────────────────
-const FRONTEND_DIST = path.resolve(process.cwd(), '..', 'frontend', 'dist');
+// Resolved from this file's location, not process.cwd(), so it works whether
+// the backend is launched from its own folder or the repo root. __dirname is
+// backend/{src,dist}, so two levels up reaches the trading-dashboard folder.
+const FRONTEND_DIST = path.resolve(__dirname, '..', '..', 'frontend', 'dist');
 if (fs.existsSync(FRONTEND_DIST)) {
   app.use(express.static(FRONTEND_DIST));
   // SPA fallback: any non-API GET returns index.html

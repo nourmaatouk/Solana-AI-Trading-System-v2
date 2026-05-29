@@ -395,7 +395,7 @@ python -m pytest tests/ -q
 | XGBoost H8 | `models/xgboost_h8.json` | 2-hour horizon classifier |
 | XGBoost H16 | `models/xgboost_h16.json` | 4-hour horizon classifier |
 | Scaler H4 | `classification/data/processed/scaler_h4.pkl` | StandardScaler fitted on train split |
-| Feature registry | `classification/data/processed/feature_columns.json` | Ordered list of 47 feature names |
+| Feature registry | `classification/data/processed/feature_columns.json` | Ordered list of 49 feature names |
 | Calibrated threshold | `classification/data/processed/threshold_h4.json` | Val-F1-optimal threshold |
 | Walk-forward results | `models/walk_forward_results.json` | OOS validation metrics |
 | Backtest results | `models/backtest_results.json` | SL/TP backtest P&L |
@@ -405,13 +405,14 @@ python -m pytest tests/ -q
 
 ## Feature Engineering
 
-47 trained features per 15-min candle, grouped as:
+49 trained features per 15-min candle, grouped as:
 
 | Category | Count | Examples |
 |----------|-------|---------|
 | Technical | 30 | `rsi_14`, `macd_hist_pct`, `bb_width`, `atr_pct_14`, `volatility_12` |
 | Time-of-day | 5 | `hour_sin`, `hour_cos`, `dow_sin`, `dow_cos`, `is_weekend` |
 | BTC co-features | 5 | `btc_return_4`, `btc_return_16`, `btc_rsi_14`, `btc_vol_12`, `btc_vs_sma20` |
+| Hawkes microstructure | 2 | `hawkes_mu`, `hawkes_branching_ratio` |
 | Orderbook | 7 | `imbalance_mean`, `imbalance_std`, `spread_mean`, `mid_price`, `bid_volume_mean`, `ask_volume_mean`, `pressure_indicator` |
 
 Non-stationary columns (raw price levels, absolute MAs) are excluded by `NON_STATIONARY_COLUMNS` in `config.py`. Future-information columns are blocked by `LEAKAGE_SUBSTRINGS`.

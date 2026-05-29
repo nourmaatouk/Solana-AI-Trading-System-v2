@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from indicators import compute_atr, compute_macd, compute_rsi
+from indicators import add_time_features, build_btc_features, compute_atr, compute_macd, compute_rsi
 
 
 # =========================================================
@@ -21,18 +21,6 @@ OUTPUT_PATH = BASE_DIR / "data" / "realtime" / "latest_sol_15m_features.csv"
 # =========================================================
 # FEATURE BUILDING
 # =========================================================
-def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
-    dt = pd.to_datetime(df["datetime"], utc=True)
-    hour = dt.dt.hour
-    dow  = dt.dt.dayofweek
-    df["hour_sin"]   = np.sin(2 * np.pi * hour / 24)
-    df["hour_cos"]   = np.cos(2 * np.pi * hour / 24)
-    df["dow_sin"]    = np.sin(2 * np.pi * dow / 7)
-    df["dow_cos"]    = np.cos(2 * np.pi * dow / 7)
-    df["is_weekend"] = (dow >= 5).astype(np.int8)
-    return df
-
-
 def add_realtime_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     Builds technical features for real-time prediction.
@@ -142,31 +130,6 @@ def add_realtime_features(df: pd.DataFrame) -> pd.DataFrame:
     out["lower_shadow_pct"] = out["lower_shadow"] / (out["close"] + 1e-12)
 
     return out
-
-
-# =========================================================
-# BTC CO-FEATURES
-# =========================================================
-def compute_btc_rsi(series: pd.Series, period: int = 14) -> pd.Series:
-    delta    = series.diff()
-    avg_gain = delta.clip(lower=0).rolling(period).mean()
-    avg_loss = (-delta.clip(upper=0)).rolling(period).mean()
-    rs       = avg_gain / (avg_loss + 1e-12)
-    return 100 - (100 / (1 + rs))
-
-
-def build_btc_features(btc: pd.DataFrame) -> pd.DataFrame:
-    ret1  = btc["close"].pct_change()
-    sma20 = btc["close"].rolling(20).mean()
-    feats = pd.DataFrame({
-        "timestamp":     btc["timestamp"],
-        "btc_return_4":  btc["close"].pct_change(4),
-        "btc_return_16": btc["close"].pct_change(16),
-        "btc_vol_12":    ret1.rolling(12).std(),
-        "btc_vs_sma20":  (btc["close"] / (sma20 + 1e-12)) - 1.0,
-        "btc_rsi_14":    compute_btc_rsi(btc["close"]),
-    })
-    return feats.dropna(subset=["btc_return_16", "btc_rsi_14"])
 
 
 def merge_btc_features(sol_df: pd.DataFrame) -> pd.DataFrame:

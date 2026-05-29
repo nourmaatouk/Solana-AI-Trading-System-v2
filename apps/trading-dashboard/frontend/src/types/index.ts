@@ -70,4 +70,7 @@ export interface AISignalData {
   confidence_gate?: number;
   rl_signal?: string;
   rl_confidence?: number;
+  /** 'ppo' when PPO RL agent owns the action; 'fusion' for weighted ensemble;
+   *  'fusion_rl_stale' when PPO signal was too old and fusion fell back. */
+  decision_source?: string;
 }

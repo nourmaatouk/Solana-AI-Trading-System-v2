@@ -66,6 +66,9 @@ export function SignalBreakdown() {
   };
   const actionStyle = actionStyles[action] ?? actionStyles.HOLD;
 
+  const ppoOwns = signal.decision_source === 'ppo';
+  const ppoStale = signal.decision_source === 'fusion_rl_stale';
+
   return (
     <div className="rounded-xl p-5 space-y-4" style={{ background: 'var(--bg-panel)', border: '1px solid var(--border)' }}>
       {/* Header */}
@@ -87,6 +90,21 @@ export function SignalBreakdown() {
           )}
         </div>
       </div>
+
+      {/* Decision-maker banner */}
+      {(ppoOwns || ppoStale) && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold"
+          style={{
+            background: ppoOwns ? 'rgba(139,92,246,0.12)' : 'rgba(246,180,53,0.10)',
+            border: `1px solid ${ppoOwns ? 'rgba(139,92,246,0.4)' : 'rgba(246,180,53,0.35)'}`,
+            color: ppoOwns ? '#a78bfa' : '#f6b435',
+          }}>
+          <span style={{ fontSize: '1rem', lineHeight: 1 }}>{ppoOwns ? '🤖' : '⚠'}</span>
+          {ppoOwns
+            ? 'Decided by: PPO RL Agent'
+            : 'PPO signal stale — decided by fusion ensemble'}
+        </div>
+      )}
 
       {/* XGBoost section */}
       <div>
@@ -128,10 +146,24 @@ export function SignalBreakdown() {
 
       {/* PPO RL Agent */}
       {signal.rl_signal && (
-        <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-xs font-semibold" style={{ color: 'var(--text-1)' }}>PPO RL Agent</span>
-            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border`}
+        <div className="rounded-lg p-3 space-y-2"
+          style={{
+            background: ppoOwns ? 'rgba(139,92,246,0.07)' : 'var(--bg-sub)',
+            border: ppoOwns ? '1px solid rgba(139,92,246,0.25)' : '1px solid var(--border)',
+          }}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-semibold" style={{ color: ppoOwns ? '#a78bfa' : 'var(--text-1)' }}>
+                PPO RL Agent
+              </span>
+              {ppoOwns && (
+                <span className="text-xs font-bold px-1.5 py-0.5 rounded"
+                  style={{ background: 'rgba(139,92,246,0.2)', color: '#a78bfa', letterSpacing: '0.05em' }}>
+                  DECIDER
+                </span>
+              )}
+            </div>
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border"
               style={
                 signal.rl_signal === 'BUY'  ? { color: 'var(--green)', backgroundColor: 'var(--green-bg)', borderColor: 'var(--green-bd)' } :
                 signal.rl_signal === 'SELL' ? { color: 'var(--red)',   backgroundColor: 'var(--red-bg)',   borderColor: 'var(--red-bd)'   } :
@@ -149,8 +181,9 @@ export function SignalBreakdown() {
                 }} />
             </div>
           )}
-          <div className="mt-1 text-xs" style={{ color: 'var(--text-3)' }}>
+          <div className="text-xs" style={{ color: 'var(--text-3)' }}>
             Confidence: {((signal.rl_confidence ?? 0) * 100).toFixed(1)}%
+            {ppoOwns && <span style={{ color: '#a78bfa' }}> · overrides ensemble</span>}
           </div>
         </div>
       )}

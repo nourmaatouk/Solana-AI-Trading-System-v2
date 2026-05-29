@@ -9,8 +9,12 @@ import { SIGNAL_POLL_INTERVAL_MS } from '../config';
 // fan-out. The audit flagged this as a follow-up to Phase 2 — switching it
 // to fetch from FastAPI removes the last bit of filesystem coupling in the
 // Node backend. Not done here to keep Phase 2 scope tight.
+// Resolve the realtime directory from this file's location (NOT process.cwd(),
+// which points at the backend folder when launched via `cd …/backend && …`).
+// Mirrors the resolution in executionState.service.ts. __dirname is
+// backend/{src,dist}/services, so five levels up reaches the repo root.
 const REALTIME_DIR = process.env.REALTIME_DIR
-  ?? path.join(process.cwd(), 'services/models/classification/data/realtime');
+  ?? path.resolve(__dirname, '..', '..', '..', '..', '..', 'services', 'models', 'classification', 'data', 'realtime');
 
 // Mirror of the Guardian's freshness window. On the first poll after the
 // backend starts, signals older than this are seeded into the dedup state

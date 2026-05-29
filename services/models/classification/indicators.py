@@ -8,6 +8,7 @@ diverge silently over time and produce inconsistent feature values.
 """
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 
@@ -45,3 +46,30 @@ def compute_macd(
     signal_line = macd_line.ewm(span=signal, adjust=False).mean()
     macd_hist = macd_line - signal_line
     return macd_line, signal_line, macd_hist
+
+
+def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Cyclical hour/day-of-week encodings + weekend flag. Identical in batch and realtime."""
+    dt = pd.to_datetime(df["datetime"], utc=True)
+    hour = dt.dt.hour
+    dow  = dt.dt.dayofweek
+    df["hour_sin"]   = np.sin(2 * np.pi * hour / 24)
+    df["hour_cos"]   = np.cos(2 * np.pi * hour / 24)
+    df["dow_sin"]    = np.sin(2 * np.pi * dow / 7)
+    df["dow_cos"]    = np.cos(2 * np.pi * dow / 7)
+    df["is_weekend"] = (dow >= 5).astype(np.int8)
+    return df
+
+
+def build_btc_features(btc: pd.DataFrame) -> pd.DataFrame:
+    """Compute the 5 stationary BTC co-features. Single source of truth for batch + realtime."""
+    ret1  = btc["close"].pct_change()
+    sma20 = btc["close"].rolling(20).mean()
+    return pd.DataFrame({
+        "timestamp":     btc["timestamp"],
+        "btc_return_4":  btc["close"].pct_change(4),
+        "btc_return_16": btc["close"].pct_change(16),
+        "btc_vol_12":    ret1.rolling(12).std(),
+        "btc_vs_sma20":  (btc["close"] / (sma20 + 1e-12)) - 1.0,
+        "btc_rsi_14":    compute_rsi(btc["close"]),
+    }).pipe(lambda df: df.dropna(subset=["btc_return_16", "btc_rsi_14"]))

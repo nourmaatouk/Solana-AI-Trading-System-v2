@@ -1,6 +1,24 @@
 import { useTradingStore } from '../store';
 import { parseSentimentLabel, signalAgeMinutes, SIGNAL_STALE_MINUTES } from '../utils/signal';
-import { DEFAULT_CONFIDENCE_GATE, GUARDIAN_SPOOFING_THRESHOLD, SPOOFING_HIGH, SPOOFING_MEDIUM } from '../config';
+import {
+  DEFAULT_CONFIDENCE_GATE,
+  GUARDIAN_SPOOFING_THRESHOLD,
+  SPOOFING_HIGH,
+  SPOOFING_MEDIUM,
+  FUSION_WEIGHT_CLASSIFICATION,
+  FUSION_WEIGHT_SENTIMENT,
+  FUSION_WEIGHT_SPOOFING,
+  FUSION_WEIGHT_GNN,
+} from '../config';
+
+// Percentage helper + fusion weights sourced from config (no hard-coded %).
+const wpct = (v: number) => `${Math.round(v * 100)}%`;
+const FUSION_WEIGHTS: { name: string; weight: number; color: string }[] = [
+  { name: 'XGBoost', weight: FUSION_WEIGHT_CLASSIFICATION, color: '#8B5CF6' },
+  { name: 'FinBERT', weight: FUSION_WEIGHT_SENTIMENT, color: '#14B8A6' },
+  { name: 'TEN-GNN', weight: FUSION_WEIGHT_SPOOFING, color: '#f6465d' },
+  { name: 'GNN', weight: FUSION_WEIGHT_GNN, color: '#0ecb81' },
+];
 
 function Bar({ value, color, label }: { value: number; label: string; color: string }) {
   const pct = Math.min(100, Math.max(0, value * 100));
@@ -130,7 +148,7 @@ export function WhySignal() {
           <div className="flex items-center justify-between mb-3">
             <div>
               <div className="font-semibold text-sm" style={{ color: 'var(--text-1)' }}>FinBERT Sentiment</div>
-              <div className="text-xs" style={{ color: 'var(--text-3)' }}>NLP model on crypto news · weight 25%</div>
+              <div className="text-xs" style={{ color: 'var(--text-3)' }}>NLP model on crypto news · weight {wpct(FUSION_WEIGHT_SENTIMENT)}</div>
             </div>
             <span className="px-2 py-0.5 rounded-full text-xs font-bold border"
               style={{ color: sentimentColor, borderColor: sentimentColor + '40', backgroundColor: sentimentColor + '15' }}>
@@ -175,9 +193,9 @@ export function WhySignal() {
         <div className="rounded-xl p-5" style={card}>
           <div className="font-semibold text-sm mb-3" style={{ color: 'var(--text-1)' }}>Fusion Weights</div>
           <div className="grid grid-cols-4 gap-3 text-center">
-            {[['XGBoost', '50%', '#8B5CF6'], ['FinBERT', '25%', '#14B8A6'], ['TEN-GNN', '20%', '#f6465d'], ['GNN', '5%', '#0ecb81']].map(([name, pct, color]) => (
+            {FUSION_WEIGHTS.map(({ name, weight, color }) => (
               <div key={name} className="rounded-lg p-3" style={{ background: 'var(--bg-sub)' }}>
-                <div className="text-base font-bold" style={{ color }}>{pct}</div>
+                <div className="text-base font-bold" style={{ color }}>{wpct(weight)}</div>
                 <div className="text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>{name}</div>
               </div>
             ))}

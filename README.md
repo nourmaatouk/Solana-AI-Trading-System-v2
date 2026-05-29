@@ -17,9 +17,9 @@ AI-powered cryptocurrency trading system targeting SOL/USDT on Solana. The full 
 
 | Component | Status | Notes |
 | --- | --- | --- |
-| XGBoost classification pipeline | ✅ Working | 47 features, H1/H4/H8/H16 horizons; H4 active in production |
+| XGBoost classification pipeline | ✅ Working | 49 features, H1/H4/H8/H16 horizons; H4 active in production |
 | TEN-GNN spoofing detection | ✅ Working | Trained checkpoint (8.3 MB); Hawkes gate runs every cycle |
-| FinBERT sentiment (NLP) | ✅ Working | GDELT + RSS + Reddit → 15-min buckets; timeout-prone live |
+| FinBERT sentiment (NLP) | ✅ Working | GDELT + RSS → 15-min buckets; timeout-prone live |
 | Fusion aggregator | ✅ Working | XGB 50% / Sentiment 25% / Spoofing 20% / GNN 5% / RL 0% |
 | PPO reinforcement-learning agent | ✅ Trained, ❌ Disabled | 2M+ training steps; `WEIGHT_RL=0.0` in fusion (val Sharpe 1.926, test –0.308) |
 | Paper trader (Python) | ✅ Working | Reads `last_fused_decision.json`; gated by Python Guardian |
@@ -167,8 +167,8 @@ FastAPI service. ~20 endpoints across health, signal, paper-trading, scheduler, 
 - `backend/` — Express + WebSocket on `:3001`. Proxies `/api/ai/*` to FastAPI, mounts `/api/execution/*`, `/api/guardian/*`, `/api/wallet/*`, streams Binance market data on `/ws`.
 - `frontend/` — Vite + React + Zustand on `:5174`. Pages: Dashboard, LiveMarket, WhySignal, BacktestPage, AlertsPage, Execution, SystemStatus, HowItWorks, Settings.
 
-#### `apps/agent/` ⏳ Stub
-ElizaOS character JSON exists but no orchestrator code yet. The narration runtime is embedded in `services/execution/src/orchestrator/elizaRuntime.ts` for post-decision text generation only.
+#### `apps/agent/` ✅ Narration only
+ElizaOS "Sentinel" character JSON for an optional standalone agent. The active narration runtime is embedded in `services/execution/src/orchestrator/elizaRuntime.ts` (a real `@elizaos/core` AgentRuntime backed by the Anthropic provider) and is used for post-decision text generation only — it never decides, approves, or executes trades.
 
 ### `services/` — Background workers and libraries
 
@@ -186,7 +186,7 @@ ElizaOS character JSON exists but no orchestrator code yet. The narration runtim
 - `gnn/` — Isolation Forest on microstructure features (not a graph network despite the name).
 
 #### `services/execution/` ✅ Implemented
-TypeScript Guardian + ExecutionWorkflow + per-mode executors. 63 tests (47 unit + 16 integration). See [`services/execution/README.md`](services/execution/README.md).
+TypeScript Guardian + ExecutionWorkflow + per-mode executors + ElizaOS narrator. 67 tests (47 Guardian unit + 16 integration + 4 narrator). See [`services/execution/README.md`](services/execution/README.md).
 
 ```
 src/
@@ -227,7 +227,7 @@ Binance WS (SOL/USDT L2) + REST (OHLCV)
 realtime_market_fetcher.py ─► latest_sol_15m.csv ─┐
 realtime_btc_fetcher.py    ─► latest_btc_15m.csv ─┤
                                                   ▼
-realtime_feature_builder.py  →  47 technical indicators
+realtime_feature_builder.py  →  49 model features (technical + BTC + Hawkes + order book)
         │
         ├─ sentiment_status.json   (FinBERT daemon or inline)
         ├─ orderbook_status.json   (Binance WS daemon)
@@ -313,6 +313,24 @@ last_execution.json + execution_history.jsonl + WS broadcast → dashboard
 - **Phantom safety.** Backend cannot sign in `WALLET_MODE=phantom`. Auto-execution requires an explicit arm toggle in the browser and auto-disarms after each successful trade.
 
 ---
+
+
+# 1. Build the execution library (only needed after editing services/execution)
+cd ~/Solana-AI-Trading-System/services/execution && npm run build
+
+# 2. Backend
+cd ~/Solana-AI-Trading-System/apps/trading-dashboard/backend && PORT=3001 npx ts-node-dev -r tsconfig-paths/register src/server.ts
+
+# 3. Frontend
+cd ~/Solana-AI-Trading-System/apps/trading-dashboard/frontend && npx vite --port 5174 --host 127.0.0.1
+
+# FastAPI 
+cd ~/Solana-AI-Trading-System && .venv/bin/uvicorn apps.api.main:app --port 8000 --host 127.0.0.1
+
+
+# to stop everything 
+pkill -f "ts-node-dev.*server.ts"; pkill -f vite
+
 
 **Maintainer:** Nour Maatouk
 **Last updated:** May 2026

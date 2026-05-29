@@ -13,12 +13,11 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "baseUrl": ".",
     "paths": {
       "@trading/execution": ["../../../services/execution/dist/index"],
       "@trading/execution/*": ["../../../services/execution/dist/*"]
     }
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "exclude": ["node_modules", "dist", "src/**/__tests__/**", "**/*.test.ts"]
 }

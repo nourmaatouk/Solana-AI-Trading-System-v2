@@ -28,7 +28,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from config import CONFIDENCE_THRESHOLD, SYMBOL
+from config import CONFIDENCE_THRESHOLD, SYMBOL, SIGNAL_STALE_MINUTES
 
 # ── path setup ──────────────────────────────────────────────────────────────
 BASE_DIR   = Path(__file__).resolve().parent
@@ -41,6 +41,7 @@ from fusion_aggregator import (                          # noqa: E402
     FusionAggregator,
     SPOOFING_SEVERITY_HIGH,
     SPOOFING_SEVERITY_MEDIUM,
+    SPOOFING_HOLD_THRESHOLD,
     SENTIMENT_POSITIVE_THRESHOLD,
     SENTIMENT_NEGATIVE_THRESHOLD,
 )
@@ -68,8 +69,36 @@ _fc_spec = _ilu.spec_from_file_location("fusion.config", _fc_path)
 _fc_mod  = _ilu.module_from_spec(_fc_spec)
 _fc_spec.loader.exec_module(_fc_mod)
 WEIGHT_RL = float(getattr(_fc_mod, "WEIGHT_RL", 0.00))
+# When True, PPO is the decision-maker: the final action is taken straight from
+# the agent rather than from the weighted fused score (see fusion/config.py).
+RL_OWNS_ACTION = bool(getattr(_fc_mod, "RL_OWNS_ACTION", False))
+
+# PPO emits BUY/SELL/NEUTRAL; map to the fusion action vocabulary (NEUTRAL→HOLD).
+_PPO_SIGNAL_TO_ACTION = {"BUY": "BUY", "SELL": "SELL", "NEUTRAL": "HOLD"}
 
 _AGGREGATOR = FusionAggregator()
+
+
+def _rl_signal_is_fresh(rl_sig: dict | None) -> bool:
+    """True when the RL signal carries a timestamp within SIGNAL_STALE_MINUTES.
+
+    A missing/unparseable timestamp is treated as fresh (back-compat); only an
+    explicitly old timestamp marks it stale, so PPO never drives the decision on
+    outdated portfolio/market state.
+    """
+    if not rl_sig:
+        return False
+    ts_raw = rl_sig.get("generated_at_utc")
+    if not ts_raw:
+        return True
+    try:
+        ts = datetime.fromisoformat(str(ts_raw))
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+    except Exception:
+        return True
+    age_min = (datetime.now(timezone.utc) - ts).total_seconds() / 60.0
+    return age_min <= SIGNAL_STALE_MINUTES
 
 
 # ── adapters ─────────────────────────────────────────────────────────────────
@@ -281,7 +310,13 @@ def _load_rl_signal() -> dict | None:
             rl_score = -(sell_prob - 0.5)
         else:
             rl_score = 0.0
-        return {"signal": sig, "confidence": conf, "rl_score": rl_score, "probabilities": probs}
+        return {
+            "signal": sig,
+            "confidence": conf,
+            "rl_score": rl_score,
+            "probabilities": probs,
+            "generated_at_utc": raw.get("generated_at_utc"),
+        }
     except Exception as exc:
         print(f"  [fusion] WARNING: failed to parse last_rl_signal.json: {exc}")
         return None
@@ -351,27 +386,55 @@ def main() -> int:
         gnn_signal=gnn_sig,
     )
 
-    # ── Blend RL signal into fused score ─────────────────────────────────────
-    # When RL model is trained: final = (1-WEIGHT_RL)*base + WEIGHT_RL*rl_score
-    # When RL model absent:     final = base  (existing behaviour unchanged)
+    # ── Decide the final action ──────────────────────────────────────────────
+    # Two modes (toggled by RL_OWNS_ACTION in fusion/config.py):
+    #
+    #   RL_OWNS_ACTION=True  → PPO IS the decision-maker. The final BUY/SELL/HOLD
+    #     is taken straight from the agent; XGBoost/FinBERT/TEN-GNN/GNN are
+    #     advisory context only. The spoofing HOLD veto still overrides PPO, and
+    #     a stale RL signal falls back to the fusion action so we never trade on
+    #     outdated state. The downstream Guardian validates regardless.
+    #
+    #   RL_OWNS_ACTION=False → weighted-score fusion, PPO blended at WEIGHT_RL.
     base_fused_score = float(decision.fused_score)
-    if rl_sig is not None:
-        rl_score = float(rl_sig["rl_score"])
-        final_fused_score = np.clip(
-            (1.0 - WEIGHT_RL) * base_fused_score + WEIGHT_RL * rl_score,
-            -1.0, 1.0,
-        )
-        final_action = _AGGREGATOR._score_to_action(final_fused_score, decision.spoofing_confidence)
-    else:
-        final_fused_score = base_fused_score
-        final_action      = decision.action
+    base_action      = decision.action
+    decision_source  = "fusion"
+    final_fused_score = base_fused_score
+    final_action      = base_action
+    final_confidence  = abs(base_fused_score)
+
+    rl_fresh = _rl_signal_is_fresh(rl_sig)
+
+    if RL_OWNS_ACTION and rl_sig is not None and rl_fresh:
+        # PPO owns the action.
+        rl_score          = float(rl_sig["rl_score"])
+        final_fused_score = float(np.clip(rl_score, -1.0, 1.0))
+        ppo_action        = _PPO_SIGNAL_TO_ACTION.get(rl_sig["signal"], "HOLD")
+        # Safety: high spoofing confidence forces HOLD even when PPO says trade.
+        if decision.spoofing_confidence > SPOOFING_HOLD_THRESHOLD:
+            ppo_action = "HOLD"
+        final_action     = ppo_action
+        final_confidence = float(rl_sig["confidence"])
+        decision_source  = "ppo"
+    elif rl_sig is not None and not RL_OWNS_ACTION:
+        # Legacy weighted blend: PPO nudges the fused score at WEIGHT_RL.
+        rl_score          = float(rl_sig["rl_score"])
+        final_fused_score = float(np.clip(
+            (1.0 - WEIGHT_RL) * base_fused_score + WEIGHT_RL * rl_score, -1.0, 1.0,
+        ))
+        final_action      = _AGGREGATOR._score_to_action(final_fused_score, decision.spoofing_confidence)
+        final_confidence  = abs(final_fused_score)
+    elif RL_OWNS_ACTION and rl_sig is not None and not rl_fresh:
+        # PPO is meant to decide but its signal is stale → fall back to fusion.
+        decision_source = "fusion_rl_stale"
 
     ts_str = decision.timestamp.isoformat() if hasattr(decision.timestamp, "isoformat") else str(decision.timestamp)
 
     reasoning = dict(decision.reasoning)
     if rl_sig:
+        tag = " [DECIDER]" if decision_source == "ppo" else (" [STALE→fusion]" if decision_source == "fusion_rl_stale" else "")
         reasoning["rl"] = (
-            f"PPO {rl_sig['signal']} (confidence={rl_sig['confidence']:.3f}, "
+            f"PPO {rl_sig['signal']}{tag} (confidence={rl_sig['confidence']:.3f}, "
             f"rl_score={rl_sig['rl_score']:+.3f})"
         )
 
@@ -384,9 +447,10 @@ def main() -> int:
         "latest_close":              cls_ctx.get("latest_close"),
         "action":                    final_action,
         "signal":                    final_action,
+        "decision_source":           decision_source,
         "fused_score":               float(final_fused_score),
         "decision_score":            float(final_fused_score),
-        "confidence":                abs(float(final_fused_score)),
+        "confidence":                float(final_confidence),
         "risk_level":                decision.risk_level,
         "alignment_score":           float(decision.alignment_score),
         "classification_confidence": float(decision.classification_confidence),
@@ -394,6 +458,10 @@ def main() -> int:
         "classification_probability_down": cls_ctx.get("classification_probability_down"),
         "spoofing_confidence":       float(decision.spoofing_confidence),
         "sentiment_relevance":       float(decision.sentiment_relevance),
+        # Structured sentiment-event fields (consumed directly by the API/UI so
+        # they no longer regex-parse the reasoning prose). None when no sentiment.
+        "event_type":                sent_sig.event_type if sent_sig else None,
+        "high_impact_event":         bool(sent_sig.high_impact_event) if sent_sig else False,
         "gnn_anomaly_score":         round(gnn_sig.anomaly_score, 4) if gnn_sig else None,
         "gnn_liquidity_stress":      round(gnn_sig.liquidity_stress, 4) if gnn_sig else None,
         "gnn_community_sentiment":   round(gnn_sig.community_sentiment, 4) if gnn_sig else None,

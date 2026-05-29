@@ -4,7 +4,12 @@ import {
   WalletProvider as _SolanaWalletProvider,
 } from '@solana/wallet-adapter-react';
 import { WalletModalProvider as _WalletModalProvider } from '@solana/wallet-adapter-react-ui';
-import { PhantomWalletAdapter } from '@solana/wallet-adapter-wallets';
+import {
+  PhantomWalletAdapter,
+  SolflareWalletAdapter,
+  CoinbaseWalletAdapter,
+  LedgerWalletAdapter,
+} from '@solana/wallet-adapter-wallets';
 import { ENABLE_PHANTOM_WALLET, SOLANA_RPC_URL, WALLET_MODE } from '../config';
 
 // The wallet adapter packages are compiled against @types/react@19 (which
@@ -36,12 +41,17 @@ interface Props {
 export function WalletProvider({ children }: Props) {
   const wallets = useMemo(() => {
     if (!ENABLE_PHANTOM_WALLET || WALLET_MODE !== 'phantom') return [];
-    return [new PhantomWalletAdapter()];
+    return [
+      new PhantomWalletAdapter(),
+      new SolflareWalletAdapter(),
+      new CoinbaseWalletAdapter(),
+      new LedgerWalletAdapter(),
+    ];
   }, []);
 
   return (
     <ConnectionProvider endpoint={SOLANA_RPC_URL}>
-      <SolanaWalletProvider wallets={wallets} autoConnect>
+      <SolanaWalletProvider wallets={wallets} autoConnect={false}>
         <WalletModalProvider>
           {children}
         </WalletModalProvider>

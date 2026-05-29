@@ -1,27 +1,18 @@
 # Jupyter Notebooks
 
-Jupyter notebooks for analysis, experimentation, and development.
+Jupyter notebooks for analysis and experimentation.
 
-## Structure
+## Contents
 
-- **backtesting/** - Backtesting notebooks for strategy evaluation
-- **eda/** - Exploratory Data Analysis notebooks
-- **model_training/** - Model training and evaluation notebooks
+- **`KAGGLE_END_TO_END_FUSION.ipynb`** — end-to-end walkthrough of the fusion
+  pipeline (feature engineering → model inference → signal fusion), runnable on
+  Kaggle.
 
 ## Purpose
 
-Provides:
-- Interactive development environment
-- Data exploration and visualization
-- Model training and hyperparameter tuning
-- Backtesting strategies
-- Performance analysis
-- Documentation with code
+- Interactive exploration of the data and models
+- Documenting analysis and findings alongside runnable code
 
-## Usage
-
-Notebooks are used for:
-- Developing and testing new features
-- Analyzing trading performance
-- Experimenting with ML models
-- Documenting analysis and findings
+> Production training, backtesting, and evaluation live in the numbered scripts
+> under `services/models/classification/` (e.g. `08_train_xgboost_no_leak.py`,
+> `20_walk_forward_validation.py`, `23_backtest.py`), not in notebooks.

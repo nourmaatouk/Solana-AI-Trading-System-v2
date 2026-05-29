@@ -13,7 +13,7 @@ Collects bids/asks every 100ms and writes aggregated 15-minute features:
 - `orderbook_imbalance`
 - `top5_bid_volume` / `top5_ask_volume`
 
-Output: `services/models/classification/data/realtime/latest_orderbook_features.csv`
+Output: `services/models/classification/data/realtime/orderbook_features.csv`
 
 ## What Is Not Yet Implemented
 

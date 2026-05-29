@@ -38,6 +38,7 @@ interface FusedDecisionPayload {
   classification_probability_down?: number;
   horizon?: string;
   high_impact_event?: boolean;
+  event_type?: string | null;
   reasoning?: { classification?: string; sentiment?: string; spoofing?: string };
 }
 
@@ -86,9 +87,9 @@ aiRouter.get('/spoofing', async (_req: Request, res: Response) => {
 });
 
 aiRouter.get('/sentiment', async (_req: Request, res: Response) => {
-  // Source: last_fused_decision.json via FastAPI /signal — it carries
-  // high_impact_event at the top level and the raw reasoning string we
-  // extract event= from. /signal/breakdown is missing both today.
+  // Source: last_fused_decision.json via FastAPI /signal. The fusion aggregator
+  // now writes structured event_type + high_impact_event fields; we prefer those
+  // and fall back to parsing the reasoning string for older JSON payloads.
   try {
     const { status, data } = await fetchJsonFromPython<FusedDecisionPayload>(`${PYTHON_API}/signal`);
     if (!data) {
@@ -108,7 +109,7 @@ aiRouter.get('/sentiment', async (_req: Request, res: Response) => {
     res.json({
       label,
       score,
-      event_type: eventMatch ? eventMatch[1] : null,
+      event_type: data.event_type ?? (eventMatch ? eventMatch[1] : null),
       high_impact: data.high_impact_event ?? false,
     });
   } catch (err) {

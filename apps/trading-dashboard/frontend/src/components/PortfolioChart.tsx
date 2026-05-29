@@ -35,7 +35,7 @@ export function PortfolioChart({ history, loading }: PortfolioChartProps) {
       <div className="rounded-xl p-5 h-full flex flex-col" style={{ background: 'var(--bg-panel)', border: '1px solid var(--border)' }}>
         <div className="mb-3">
           <div className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>Portfolio Performance</div>
-          <div className="text-xs" style={{ color: 'var(--text-3)' }}>30-day equity curve</div>
+          <div className="text-xs" style={{ color: 'var(--text-3)' }}>Equity curve</div>
         </div>
         <div className="flex-1 flex flex-col items-center justify-center text-center gap-2">
           <svg className="w-10 h-10" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24" style={{ color: 'var(--border)' }}>
@@ -100,7 +100,7 @@ export function PortfolioChart({ history, loading }: PortfolioChartProps) {
     <div className="rounded-xl p-5 h-full flex flex-col" style={{ background: 'var(--bg-panel)', border: '1px solid var(--border)' }}>
       <div className="mb-3">
         <div className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>Portfolio Performance</div>
-        <div className="text-xs" style={{ color: 'var(--text-3)' }}>30-day equity curve · Paper Trading</div>
+        <div className="text-xs" style={{ color: 'var(--text-3)' }}>Equity curve · Paper Trading</div>
       </div>
 
       <div className="flex-1 min-h-0">

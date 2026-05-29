@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from indicators import compute_atr, compute_macd, compute_rsi
+from indicators import add_time_features, compute_atr, compute_macd, compute_rsi
 
 
 # =========================================================
@@ -20,18 +20,6 @@ OUTPUT_PATH = PROJECT_ROOT / "data" / "processed" / "sol_usdt_15m_features_h4.cs
 # =========================================================
 # FEATURE ENGINEERING
 # =========================================================
-def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
-    dt = pd.to_datetime(df["datetime"], utc=True)
-    hour = dt.dt.hour
-    dow  = dt.dt.dayofweek
-    df["hour_sin"]   = np.sin(2 * np.pi * hour / 24)
-    df["hour_cos"]   = np.cos(2 * np.pi * hour / 24)
-    df["dow_sin"]    = np.sin(2 * np.pi * dow / 7)
-    df["dow_cos"]    = np.cos(2 * np.pi * dow / 7)
-    df["is_weekend"] = (dow >= 5).astype(np.int8)
-    return df
-
-
 def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
 

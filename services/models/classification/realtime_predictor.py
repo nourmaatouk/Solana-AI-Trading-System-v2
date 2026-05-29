@@ -19,6 +19,7 @@ from config import (
     PROCESSED_DIR,
     REALTIME_DIR,
 )
+from pipeline_utils import json_safe
 
 FEATURE_PATH         = REALTIME_DIR / "latest_features_with_sentiment.csv"
 LAST_SIGNAL_PATH     = REALTIME_DIR / "last_signal.json"
@@ -140,18 +141,6 @@ def score_to_signal(
     return "NEUTRAL", "LOW_CONFIDENCE"
 
 
-def _json_safe(value: Any) -> Any:
-    if isinstance(value, Path):
-        return str(value)
-    if isinstance(value, np.generic):
-        return value.item()
-    if isinstance(value, (pd.Timestamp, datetime)):
-        return value.isoformat()
-    if isinstance(value, float) and np.isnan(value):
-        return None
-    return value
-
-
 def write_signal_json(
     *,
     signal: str,
@@ -185,7 +174,7 @@ def write_signal_json(
     if details:
         payload["details"] = details
 
-    safe_payload = {key: _json_safe(value) for key, value in payload.items()}
+    safe_payload = {key: json_safe(value) for key, value in payload.items()}
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
         json.dump(safe_payload, f, indent=2)

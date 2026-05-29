@@ -57,6 +57,7 @@ from config import (
     REALTIME_DIR,
     SENTIMENT_CAP,
 )
+from pipeline_utils import json_safe
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 FEATURE_PATH       = REALTIME_DIR / "latest_features_with_sentiment.csv"
@@ -120,16 +121,6 @@ class TENClassifier(nn.Module):
         h = self.encoder(h)
         h = h.mean(dim=1)
         return self.head(h).squeeze(-1)
-
-
-def _json_safe(v: Any) -> Any:
-    if isinstance(v, (np.floating, np.integer)):
-        return v.item()
-    if isinstance(v, float) and np.isnan(v):
-        return None
-    if isinstance(v, Path):
-        return str(v)
-    return v
 
 
 def _stacker_feature_count(stacker) -> int:
@@ -416,8 +407,8 @@ def main() -> int:
         "confidence_threshold": gate,
         "models_used":         ["xgb", "dnn", "ten"] if use_ten else ["xgb", "dnn"],
     }
-    safe = {k: _json_safe(v) for k, v in payload.items()}
-    safe["components"] = {k: _json_safe(v) for k, v in payload["components"].items()}
+    safe = {k: json_safe(v) for k, v in payload.items()}
+    safe["components"] = {k: json_safe(v) for k, v in payload["components"].items()}
 
     FUSION_SIGNAL_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(FUSION_SIGNAL_PATH, "w") as f:

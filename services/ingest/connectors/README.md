@@ -9,7 +9,7 @@ WebSocket connector for the Binance SOL/USDT Level-2 orderbook.
 - Streams live bids/asks at 100ms intervals
 - Aggregates into 15-minute orderbook features
 - Handles reconnection on disconnect
-- Writes to `services/models/classification/data/realtime/latest_orderbook_features.csv`
+- Writes to `services/models/classification/data/realtime/orderbook_features.csv`
 
 ## Not Yet Implemented
 

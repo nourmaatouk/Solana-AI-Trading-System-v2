@@ -78,7 +78,8 @@ export function HowItWorks() {
             Solvanta is an AI-powered predictive trading assistant for {MARKET_PAIR}. It fuses independent
             models — a machine learning classifier, a reinforcement learning agent, an NLP sentiment model,
             and a graph neural network — to generate BUY / SELL / HOLD signals on the configured {ACTIVE_TIMEFRAME} cadence.
-            All execution is simulated (paper trading).
+            Signals feed a paper-trading simulator by default; a Guardian-gated executor can place real
+            devnet / mainnet trades once a wallet is connected.
           </p>
         </Section>
 
@@ -103,7 +104,7 @@ export function HowItWorks() {
             <Model name="PPO RL Agent" weight={rlWeightLabel} color="#F59E0B"
               desc="Proximal Policy Optimization agent trained with a custom TradingEnv on historical bars. Action space: HOLD / BUY / SELL. It remains a side signal while RL fusion weight is disabled." />
             <Model name="FinBERT Sentiment" weight={pct(FUSION_WEIGHT_SENTIMENT)} color="#14B8A6"
-              desc="BERT-based NLP model fine-tuned on financial text. Processes news headlines from crypto RSS feeds. Outputs POSITIVE / NEUTRAL / NEGATIVE label with a relevance score. Reduces BUY confidence when sentiment is strongly negative." />
+              desc="BERT-based NLP model fine-tuned on financial text. Processes crypto news from GDELT and RSS feeds. Outputs POSITIVE / NEUTRAL / NEGATIVE label with a relevance score. Reduces BUY confidence when sentiment is strongly negative." />
             <Model name="TEN-GNN Spoofing Detector" weight={pct(FUSION_WEIGHT_SPOOFING)} color="#f6465d"
               desc={`Temporal Event Network GNN that models the order book as a graph. Confidence above ${pct(SPOOFING_HIGH)} is highlighted as suspicious, and Guardian blocks entries above ${pct(GUARDIAN_SPOOFING_THRESHOLD)}.`} />
             <Model name="GNN Structural" weight={pct(FUSION_WEIGHT_GNN)} color="#0ecb81"
@@ -137,7 +138,7 @@ export function HowItWorks() {
               ['Frontend',         'React 18 + TypeScript + Vite + Tailwind CSS'],
               ['Charts',           'lightweight-charts v4 (Binance-style candlesticks)'],
               ['State',            'Zustand (zero-selector re-render optimization)'],
-              ['Backend',          'Node.js 20 + Express + WebSocket server'],
+              ['Backend',          'Node.js 24 + Express + WebSocket server'],
               ['AI API',           'FastAPI (Python) on port 8000'],
               ['Process manager',  'PM2 — 6 daemons always running'],
               ['ML training',      'XGBoost + PPO (stable-baselines3) + walk-forward validation'],

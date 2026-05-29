@@ -38,7 +38,7 @@ from config import (
     TIMEFRAME,
 )
 from exchange_utils import fetch_ohlcv_with_retries, get_exchange
-from indicators import compute_rsi
+from indicators import build_btc_features, compute_rsi
 
 RAW_DIR        = DATA_DIR / "raw"
 BTC_RAW_PATH   = RAW_DIR / BTC_RAW_CSV
@@ -75,22 +75,6 @@ def fetch_all_ohlcv(ex, symbol: str, start_ms: int, end_ms: int) -> pd.DataFrame
     df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
     print(f"  Downloaded {len(df):,} {symbol} candles.")
     return df
-
-
-def build_btc_features(btc: pd.DataFrame) -> pd.DataFrame:
-    """Compute the 5 stationary BTC co-features."""
-    ret1 = btc["close"].pct_change()
-    sma20 = btc["close"].rolling(20).mean()
-
-    features = pd.DataFrame({
-        "timestamp":    btc["timestamp"],
-        "btc_return_4":  btc["close"].pct_change(4),
-        "btc_return_16": btc["close"].pct_change(16),
-        "btc_vol_12":    ret1.rolling(12).std(),
-        "btc_vs_sma20":  (btc["close"] / (sma20 + 1e-12)) - 1.0,
-        "btc_rsi_14":    compute_rsi(btc["close"]),
-    })
-    return features.dropna(subset=["btc_return_16", "btc_rsi_14"])
 
 
 # ─────────────────────────────────────────────────────────────────────────────

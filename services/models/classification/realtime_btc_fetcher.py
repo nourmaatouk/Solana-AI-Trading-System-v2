@@ -12,9 +12,6 @@ can be computed from fresh BTC data.
 from __future__ import annotations
 
 import sys
-from typing import Any
-
-import pandas as pd
 
 from config import (
     BTC_SYMBOL,
@@ -24,26 +21,9 @@ from config import (
     TIMEFRAME,
 )
 from exchange_utils import fetch_ohlcv_with_retries, get_exchange
+from realtime_market_fetcher import fetch_latest_candles
 
 OUTPUT_PATH = REALTIME_DIR / "latest_btc_15m.csv"
-
-
-def fetch_latest_candles(exchange: Any, symbol: str, timeframe: str, limit: int) -> pd.DataFrame:
-    print(f"Fetching latest {limit} candles for {symbol} on {timeframe}...")
-    try:
-        ohlcv = fetch_ohlcv_with_retries(exchange, symbol, timeframe, since=None, limit=limit)
-    except Exception as e:
-        print(f"Error fetching {symbol} from exchange after retries: {type(e).__name__}: {e}")
-        sys.exit(1)
-
-    if not ohlcv:
-        print(f"Error: No data returned for {symbol}.")
-        sys.exit(1)
-
-    df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
-    df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
-    df = df.sort_values("timestamp").reset_index(drop=True)
-    return df
 
 
 def main() -> None:

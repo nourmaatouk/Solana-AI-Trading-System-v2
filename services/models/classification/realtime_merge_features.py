@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from pipeline_utils import resample_orderbook_15m as _resample_orderbook_base
+
 
 # =========================================================
 # CONFIG
@@ -48,22 +50,15 @@ def _orderbook_staleness_minutes(df_orderbook: pd.DataFrame) -> float | None:
 
 
 def resample_orderbook_15m(df_orderbook: pd.DataFrame) -> pd.DataFrame:
+    """Thin wrapper — normalises timestamps then delegates to the shared implementation."""
     df_ob = df_orderbook.copy()
     if "timestamp" not in df_ob.columns:
         raise ValueError("Orderbook data must contain a timestamp column.")
-
     df_ob["timestamp"] = normalize_timestamp(df_ob["timestamp"])
     df_ob.dropna(subset=["timestamp"], inplace=True)
     if df_ob.empty:
         return pd.DataFrame(columns=["timestamp"])
-
-    df_ob["timestamp"] = df_ob["timestamp"].dt.floor("15min")
-    numeric_cols = [
-        col for col in df_ob.columns
-        if col != "timestamp" and pd.api.types.is_numeric_dtype(df_ob[col])
-    ]
-
-    return df_ob.groupby("timestamp", as_index=False)[numeric_cols].mean()
+    return _resample_orderbook_base(df_ob)
 
 
 def merge_realtime_data(

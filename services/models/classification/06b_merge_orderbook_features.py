@@ -21,7 +21,7 @@ import numpy as np
 import pandas as pd
 
 from config import LEAKAGE_SUBSTRINGS, ORDERBOOK_CSV, PROCESSED_DIR, REALTIME_DIR, SENTIMENT_CSV
-from pipeline_utils import find_ts_col
+from pipeline_utils import find_ts_col, resample_orderbook_15m
 
 # =========================================================
 # PATHS
@@ -29,30 +29,6 @@ from pipeline_utils import find_ts_col
 MARKET_SENT_PATH = PROCESSED_DIR / SENTIMENT_CSV
 ORDERBOOK_PATH   = REALTIME_DIR / "orderbook_features.csv"
 OUTPUT_PATH      = PROCESSED_DIR / ORDERBOOK_CSV
-
-
-def resample_orderbook_15m(df_ob: pd.DataFrame) -> pd.DataFrame:
-    """
-    Resample sub-minute orderbook snapshots into 15-minute buckets.
-
-    Uses mean aggregation for all numeric columns and floors timestamps
-    to the 15-minute boundary.
-    """
-    ts_col = find_ts_col(df_ob)
-    df = df_ob.copy()
-    df[ts_col] = pd.to_datetime(df[ts_col], errors="coerce", utc=True)
-    df.dropna(subset=[ts_col], inplace=True)
-
-    # Floor to 15-minute boundary
-    df["bucket"] = df[ts_col].dt.floor("15min")
-
-    numeric_cols = [c for c in df.columns if c not in [ts_col, "bucket"]]
-    agg_dict = {c: "mean" for c in numeric_cols if pd.api.types.is_numeric_dtype(df[c])}
-
-    df_resampled = df.groupby("bucket").agg(agg_dict).reset_index()
-    df_resampled.rename(columns={"bucket": "timestamp"}, inplace=True)
-
-    return df_resampled
 
 
 def merge_orderbook(
