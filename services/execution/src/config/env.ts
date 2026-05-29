@@ -97,6 +97,18 @@ const ExecutionEnvSchema = z.object({
   PYTHON_API_KEY: z.string().optional(),
 
   ENABLE_LLM_NARRATION_FALLBACK_STUB: boolFromString.default('true'),
+
+  // ── ElizaOS narration — Ollama (free, local) ─────────────────────────────
+  // Default provider. Requires Ollama running locally (https://ollama.com).
+  // Set OLLAMA_MODEL to any model you have pulled, e.g. llama3.2:latest.
+  OLLAMA_BASE_URL: z.string().url().default('http://localhost:11434'),
+  OLLAMA_MODEL: z.string().default('llama3.2:latest'),
+
+  // ── ElizaOS narration — Anthropic (optional, paid) ───────────────────────
+  // When set, Anthropic is used instead of Ollama. Leave empty to use Ollama.
+  // Never logged.
+  ANTHROPIC_API_KEY: z.string().optional(),
+  ANTHROPIC_SMALL_MODEL: z.string().default('claude-3-5-haiku-20241022'),
 });
 
 export type ExecutionEnv = z.infer<typeof ExecutionEnvSchema>;
