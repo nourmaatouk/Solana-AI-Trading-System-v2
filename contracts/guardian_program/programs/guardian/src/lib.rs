@@ -20,7 +20,7 @@
 
 use anchor_lang::prelude::*;
 
-declare_id!("Gard1nGuard1anGuard1anGuard1anGuard1anGuard1an1");
+declare_id!("DVQ3uopMVLznw3tLJahTkfE1VwzNSPHo1Q8tTvUbjdrG");
 
 /// Basis-point divisor. 10_000 bps = 100 %.
 pub const BPS_DIVISOR: u16 = 10_000;

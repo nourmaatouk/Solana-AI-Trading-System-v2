@@ -10,6 +10,10 @@ import type { ApprovedAction, ExecutionMode } from '../guardian/types';
 export interface ExecutionContext {
   approved_action: ApprovedAction;
   guardian_decision_id: string; // Idempotency token from the validator
+  /** Signal generation timestamp — used as part of the on-chain signal hash. */
+  signal_generated_at_utc?: string;
+  /** Raw confidence [0,1] — forwarded to the on-chain Guardian as bps. */
+  confidence?: number;
   /** Phantom wallet public key (base58). Present when WALLET_MODE=phantom.
    *  Used by prepareTransaction() to build the tx for client-side signing. */
   phantom_public_key?: string;
@@ -29,6 +33,8 @@ export interface ExecutionResult {
   submitted_at_utc: string;
   confirmed_at_utc: string | null;
   error: string | null;
+  /** Base58 public key of the keypair that signed the transaction. */
+  signed_by: string | null;
   // Free-form mode-specific metadata. Logged but not part of the contract.
   meta?: Record<string, unknown>;
 }

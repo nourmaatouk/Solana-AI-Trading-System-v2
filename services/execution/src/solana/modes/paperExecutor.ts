@@ -42,6 +42,7 @@ export class PaperExecutor implements ITransactionExecutor {
       submitted_at_utc,
       confirmed_at_utc: submitted_at_utc,
       error: null,
+      signed_by: null,
       meta: { note: 'No on-chain activity. This is a simulation.' },
     };
   }

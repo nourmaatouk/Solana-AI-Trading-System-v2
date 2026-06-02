@@ -1,4 +1,7 @@
+import { useState } from 'react';
+import { useWallet } from '@solana/wallet-adapter-react';
 import { useTradingStore, type ExecutionHistoryEntry } from '../store';
+import { explorerTxUrl } from '../utils/solanaExplorer';
 
 function formatTime(iso: string): string {
   try {
@@ -56,48 +59,90 @@ function Row({ entry }: { entry: ExecutionHistoryEntry }) {
         {entry.mode ?? '—'}
       </span>
 
-      {/* Reason / signature */}
-      <span
-        className="truncate font-mono"
-        style={{ color: 'var(--text-3)' }}
-        title={entry.signature ?? entry.blocked_by ?? entry.error ?? entry.reasons[0] ?? ''}
-      >
-        {entry.signature
-          ? `${entry.signature.slice(0, 8)}…`
-          : entry.blocked_by ?? entry.error ?? entry.reasons[0] ?? '—'}
-      </span>
+      {/* Reason / signature (signature → clickable explorer link) */}
+      {entry.signature ? (
+        <a
+          href={explorerTxUrl(entry.signature, entry.mode)}
+          target="_blank"
+          rel="noreferrer"
+          className="truncate font-mono hover:underline"
+          style={{ color: 'var(--accent)' }}
+          title={`View ${entry.signature} on Solana Explorer`}
+        >
+          {entry.signature.slice(0, 8)}… ↗
+        </a>
+      ) : (
+        <span
+          className="truncate font-mono"
+          style={{ color: 'var(--text-3)' }}
+          title={entry.blocked_by ?? entry.error ?? entry.reasons[0] ?? ''}
+        >
+          {entry.decision === 'BLOCK'
+            ? `Blocked before chain: ${entry.blocked_by ?? entry.reasons[0] ?? 'Guardian'}`
+            : entry.error ?? entry.reasons[0] ?? '—'}
+        </span>
+      )}
     </div>
   );
 }
 
 export function ExecutionHistory() {
   const history = useTradingStore((s) => s.executionHistory);
+  const { connected, publicKey } = useWallet();
+  const [filterByWallet, setFilterByWallet] = useState(false);
+
+  const walletPubkey = connected && publicKey ? publicKey.toBase58() : null;
+  const visible = filterByWallet && walletPubkey
+    ? history.filter((e) => e.signed_by === walletPubkey)
+    : history;
 
   return (
     <div>
-      {/* Column headers */}
-      <div
-        className="grid gap-2 px-3 pb-1 text-[11px]"
-        style={{
-          gridTemplateColumns: '70px 52px 42px 48px 64px 1fr',
-          color: 'var(--text-3)',
-        }}
-      >
-        <span>Time</span>
-        <span>Result</span>
-        <span>Side</span>
-        <span>Amount</span>
-        <span>Mode</span>
-        <span>Detail</span>
+      {/* Header row: title filter toggle */}
+      <div className="flex items-center justify-between mb-2">
+        <div
+          className="grid gap-2 px-3 text-[11px] flex-1"
+          style={{
+            gridTemplateColumns: '70px 52px 42px 48px 64px 1fr',
+            color: 'var(--text-3)',
+          }}
+        >
+          <span>Time</span>
+          <span>Result</span>
+          <span>Side</span>
+          <span>Amount</span>
+          <span>Mode</span>
+          <span>Detail</span>
+        </div>
+        {walletPubkey && (
+          <button
+            onClick={() => setFilterByWallet((v) => !v)}
+            className="text-[11px] px-2 py-0.5 rounded flex-shrink-0 ml-2"
+            style={{
+              background: filterByWallet ? 'var(--accent)' : 'var(--bg-sub)',
+              color: filterByWallet ? 'var(--bg-page)' : 'var(--text-3)',
+              border: `1px solid ${filterByWallet ? 'var(--accent)' : 'var(--border)'}`,
+            }}
+            title={filterByWallet
+              ? `Showing trades signed by ${walletPubkey.slice(0, 6)}…${walletPubkey.slice(-4)}`
+              : 'Show only trades signed by connected wallet'}
+          >
+            {filterByWallet
+              ? `${walletPubkey.slice(0, 4)}…${walletPubkey.slice(-4)} ✕`
+              : 'My wallet'}
+          </button>
+        )}
       </div>
 
-      {history.length === 0 ? (
+      {visible.length === 0 ? (
         <p className="text-xs px-3 py-4 text-center" style={{ color: 'var(--text-3)' }}>
-          No executions yet — trades will appear here in real time.
+          {filterByWallet && walletPubkey
+            ? `No trades signed by ${walletPubkey.slice(0, 6)}…${walletPubkey.slice(-4)} yet.`
+            : 'No executions yet — trades will appear here in real time.'}
         </p>
       ) : (
         <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
-          {history.map((entry, i) => (
+          {visible.map((entry, i) => (
             <Row key={`${entry.request_received_at_utc}-${i}`} entry={entry} />
           ))}
         </div>

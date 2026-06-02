@@ -48,7 +48,10 @@ export class SolanaExecutionService {
    * The decision id is the Guardian's evaluated_at_utc, used as an
    * idempotency token in logs.
    */
-  async executeApproved(guardianResult: GuardianResult): Promise<ExecutionResult> {
+  async executeApproved(
+    guardianResult: GuardianResult,
+    signalMeta?: { signal_generated_at_utc?: string; confidence?: number },
+  ): Promise<ExecutionResult> {
     if (!guardianResult.approved || !guardianResult.sanitized_action) {
       const msg = 'executeApproved called with a BLOCKED Guardian result.';
       log.error('execution.refused.unapproved', { blocked_by: guardianResult.blocked_by });
@@ -75,6 +78,8 @@ export class SolanaExecutionService {
     const ctx: ExecutionContext = {
       approved_action: guardianResult.sanitized_action,
       guardian_decision_id: guardianResult.evaluated_at_utc,
+      signal_generated_at_utc: signalMeta?.signal_generated_at_utc,
+      confidence: signalMeta?.confidence,
     };
 
     log.info('execution.dispatch', {

@@ -21,6 +21,7 @@ import { buildSolanaClient, type SolanaClientHandle } from '../client';
 import { loadEnv } from '../../config/env';
 import { log } from '../../logger';
 import { fetchJupiterSwap } from '../jupiterSwap';
+import { authorizeOnChain } from '../onchainGuardian';
 import type {
   ExecutionContext,
   ExecutionResult,
@@ -52,6 +53,70 @@ export class DevnetExecutor implements ITransactionExecutor {
     const submitted_at_utc = new Date().toISOString();
     const env = loadEnv();
 
+    // ── On-chain Guardian check ──────────────────────────────────────────────
+    // When ENABLE_ONCHAIN_GUARDIAN=true the Guardian program on Solana validates
+    // the trade before the swap runs. The program enforces the same rules as the
+    // off-chain TypeScript Guardian but at the validator level — if it rejects,
+    // the swap instruction is never reached.
+    if (env.ENABLE_ONCHAIN_GUARDIAN && env.GUARDIAN_PROGRAM_ID && env.SOLANA_PRIVATE_KEY) {
+      const adminPubkey = env.GUARDIAN_ADMIN_PUBKEY ?? env.SOLANA_PUBLIC_KEY;
+      if (!adminPubkey) {
+        log.error('onchain_guardian.missing_admin', {
+          note: 'Set GUARDIAN_ADMIN_PUBKEY or SOLANA_PUBLIC_KEY',
+        });
+        return {
+          status: 'failed', mode: 'devnet',
+          signature: null, block_height: null,
+          asset: action.asset, side: action.side, amount_sol: action.amount_sol,
+          rpc_url: this.handle.rpcUrl, submitted_at_utc, confirmed_at_utc: null,
+          error: 'On-chain Guardian: GUARDIAN_ADMIN_PUBKEY is not configured.',
+          signed_by: env.SOLANA_PUBLIC_KEY ?? null,
+        };
+      }
+
+      const signalKey = [
+        ctx.signal_generated_at_utc ?? guardian_decision_id,
+        action.side,
+        action.amount_sol,
+      ].join('|');
+
+      log.info('onchain_guardian.checking', {
+        decision_id: guardian_decision_id,
+        program_id: env.GUARDIAN_PROGRAM_ID,
+        amount_sol: action.amount_sol,
+      });
+
+      // GUARDIAN_PRIVATE_KEY signs the authorize_execution tx.
+      // Falls back to SOLANA_PRIVATE_KEY when both keys are the same wallet.
+      const guardianKey = env.GUARDIAN_PRIVATE_KEY ?? env.SOLANA_PRIVATE_KEY;
+      const onChain = await authorizeOnChain({
+        programId:        env.GUARDIAN_PROGRAM_ID,
+        adminPubkey,
+        rpcUrl:           this.handle.rpcUrl,
+        privateKeyBase58: guardianKey!,
+        amountSol:        action.amount_sol,
+        confidenceRatio:  ctx.confidence ?? 0,
+        signalKey,
+      });
+
+      if (!onChain.authorized) {
+        log.warn('onchain_guardian.blocked', { reason: onChain.error, decision_id: guardian_decision_id });
+        return {
+          status: 'failed', mode: 'devnet',
+          signature: null, block_height: null,
+          asset: action.asset, side: action.side, amount_sol: action.amount_sol,
+          rpc_url: this.handle.rpcUrl, submitted_at_utc, confirmed_at_utc: null,
+          error: `On-chain Guardian blocked: ${onChain.error}`,
+          signed_by: env.SOLANA_PUBLIC_KEY ?? null,
+        };
+      }
+
+      log.info('onchain_guardian.approved', {
+        auth_signature: onChain.signature,
+        decision_id: guardian_decision_id,
+      });
+    }
+
     if (!this.handle.signingCapable) {
       const msg = 'Devnet execution requires SOLANA_PRIVATE_KEY and solana-agent-kit installed.';
       log.error('execution.devnet.refused', { reason: msg });
@@ -61,6 +126,7 @@ export class DevnetExecutor implements ITransactionExecutor {
         asset: action.asset, side: action.side, amount_sol: action.amount_sol,
         rpc_url: this.handle.rpcUrl,
         submitted_at_utc, confirmed_at_utc: null, error: msg,
+        signed_by: env.SOLANA_PUBLIC_KEY ?? null,
       };
     }
 
@@ -159,6 +225,7 @@ export class DevnetExecutor implements ITransactionExecutor {
         asset: action.asset, side: action.side, amount_sol: action.amount_sol,
         rpc_url: this.handle.rpcUrl,
         submitted_at_utc, confirmed_at_utc, error: null,
+        signed_by: keypair.publicKey.toBase58(),
         meta: {
           swap_type: 'jupiter_v6',
           in_amount_lamports: swapPkg.inAmountLamports.toString(),
@@ -175,6 +242,7 @@ export class DevnetExecutor implements ITransactionExecutor {
         asset: action.asset, side: action.side, amount_sol: action.amount_sol,
         rpc_url: this.handle.rpcUrl,
         submitted_at_utc, confirmed_at_utc: null, error: msg,
+        signed_by: keypair.publicKey.toBase58(),
       };
     }
   }
@@ -186,7 +254,7 @@ export class DevnetExecutor implements ITransactionExecutor {
   private async _executeSelfTransfer(
     ctx: ExecutionContext,
     connection: unknown,
-    keypair: { publicKey: unknown },
+    keypair: { publicKey: { toBase58(): string } },
     submitted_at_utc: string,
     web3: Record<string, unknown>,
   ): Promise<ExecutionResult> {
@@ -228,6 +296,7 @@ export class DevnetExecutor implements ITransactionExecutor {
         asset: action.asset, side: action.side, amount_sol: action.amount_sol,
         rpc_url: this.handle.rpcUrl,
         submitted_at_utc, confirmed_at_utc, error: null,
+        signed_by: keypair.publicKey.toBase58(),
         meta: { swap_type: 'self_transfer', note: 'Path verification only. Set JUPITER_SWAP_ENABLED=true for real swaps.' },
       };
     } catch (err) {
@@ -239,6 +308,7 @@ export class DevnetExecutor implements ITransactionExecutor {
         asset: action.asset, side: action.side, amount_sol: action.amount_sol,
         rpc_url: this.handle.rpcUrl,
         submitted_at_utc, confirmed_at_utc: null, error: msg,
+        signed_by: keypair.publicKey.toBase58(),
       };
     }
   }

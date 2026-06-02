@@ -136,9 +136,6 @@ export function Dashboard() {
 
       {/* Smart Assistant */}
       <SmartAssistant
-        winRate={metrics?.win_rate ?? null}
-        activeSignals={activeSignals24h}
-        loading={loading}
         fusedScore={fusedScore}
       />
 

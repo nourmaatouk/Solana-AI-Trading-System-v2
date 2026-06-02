@@ -70,7 +70,10 @@ export class ExecutionWorkflow {
       };
     }
 
-    const execution = await this.executor.executeApproved(guardian);
+    const execution = await this.executor.executeApproved(guardian, {
+      signal_generated_at_utc: input.signal_generated_at_utc ?? undefined,
+      confidence: input.confidence ?? undefined,
+    });
     const narration = await this.narrator.narrate(guardian, execution);
 
     return {

@@ -145,19 +145,6 @@ export function AISignalPanel() {
               )}
             </div>
 
-            <div style={{ borderTop: '1px solid var(--border)' }} />
-
-            {signal.reason && (
-              <div>
-                <div className="text-[10px] mb-1 font-medium uppercase tracking-wider" style={{ color: 'var(--text-3)' }}>Reasoning</div>
-                <div className="text-[10px] leading-relaxed" style={{ color: 'var(--text-2)' }}>{signal.reason}</div>
-              </div>
-            )}
-            {signal.generated_at_utc && (
-              <div className="text-[9px]" style={{ color: 'var(--text-3)' }}>
-                Generated: {new Date(signal.generated_at_utc).toLocaleString()}
-              </div>
-            )}
           </>
         )}
 

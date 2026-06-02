@@ -5,6 +5,7 @@ import {
   SETTINGS_KEY,
   type Settings,
 } from '../hooks/useSettings';
+import { MAX_TRADE_SIZE_SOL } from '../config';
 import {
   enableAutoExecute,
   disableAutoExecute,
@@ -159,7 +160,7 @@ export function SettingsPage() {
                 type="number"
                 step={0.001}
                 min={0.001}
-                max={10}
+                max={MAX_TRADE_SIZE_SOL}
                 value={settings.maxTradeSizeSol}
                 onChange={(e) => {
                   const v = parseFloat(e.target.value);

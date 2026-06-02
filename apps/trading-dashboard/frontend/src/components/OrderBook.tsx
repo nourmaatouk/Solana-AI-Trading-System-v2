@@ -55,7 +55,7 @@ export function OrderBook() {
             style={{ color: 'var(--text-3)' }}>{h}</span>
         ))}
       </div>
-      <div className="flex flex-col-reverse overflow-hidden" style={{ height: '220px' }}>
+      <div className="flex flex-col-reverse overflow-y-auto" style={{ height: '220px' }}>
         {asks.length === 0
           ? <div className="flex items-center justify-center h-full text-xs" style={{ color: 'var(--text-3)' }}>No data</div>
           : asks.map((ask) => <Row key={ask.price} {...ask} side="ask" isWall={ask.isWall} baseAsset={base} />)}
@@ -70,7 +70,7 @@ export function OrderBook() {
           {' '}(<span style={{ color: 'var(--text-2)' }}>{spreadPct.toFixed(4)}%</span>)
         </span>
       </div>
-      <div className="flex flex-col overflow-hidden" style={{ height: '220px' }}>
+      <div className="flex flex-col overflow-y-auto" style={{ height: '220px' }}>
         {bids.length === 0
           ? <div className="flex items-center justify-center h-full text-xs" style={{ color: 'var(--text-3)' }}>No data</div>
           : bids.map((bid) => <Row key={bid.price} {...bid} side="bid" isWall={bid.isWall} baseAsset={base} />)}

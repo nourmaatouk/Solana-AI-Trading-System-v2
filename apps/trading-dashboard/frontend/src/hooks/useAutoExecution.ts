@@ -184,6 +184,9 @@ export function useAutoExecution(): AutoExecutionControls {
           }));
         })
         .catch((err: Error) => {
+          // Release the key so a retry on the same signal is allowed after a
+          // network/API error (as opposed to a Guardian block, which is final).
+          lastProcessedKeyRef.current = null;
           safeSetState((prev) => ({
             ...prev,
             skippedReason: `Validation error: ${err.message}`,
@@ -253,6 +256,9 @@ export function useAutoExecution(): AutoExecutionControls {
           }));
         })
         .catch((err: Error) => {
+          // Release the key so the next signal poll can retry after a transient
+          // network error. A Guardian BLOCK is a final verdict and stays consumed.
+          lastProcessedKeyRef.current = null;
           safeSetState((prev) => ({
             ...prev,
             skippedReason: `Auto-exec error: ${err.message}`,

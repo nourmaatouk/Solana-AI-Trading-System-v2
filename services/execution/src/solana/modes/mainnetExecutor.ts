@@ -145,6 +145,7 @@ export class MainnetExecutor implements ITransactionExecutor {
         asset: action.asset, side: action.side, amount_sol: action.amount_sol,
         rpc_url: this.handle.rpcUrl,
         submitted_at_utc, confirmed_at_utc: confirmed_at_utc, error: null,
+        signed_by: keypair.publicKey.toBase58(),
         meta: {
           swap_type: 'jupiter_v6',
           in_amount_lamports: swapPkg.inAmountLamports.toString(),
@@ -223,5 +224,6 @@ function failed(
     asset: action.asset, side: action.side, amount_sol: action.amount_sol,
     rpc_url: rpcUrl,
     submitted_at_utc, confirmed_at_utc: null, error,
+    signed_by: null,
   };
 }

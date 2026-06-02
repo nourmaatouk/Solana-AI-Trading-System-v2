@@ -12,6 +12,7 @@ aiRouter.get('/health',         async (_req, res) => proxyGet(`${PYTHON_API}/hea
 aiRouter.get('/status',         async (_req, res) => proxyGet(`${PYTHON_API}/status`, res));
 aiRouter.get('/scheduler',      async (_req, res) => proxyGet(`${PYTHON_API}/scheduler`, res));
 aiRouter.get('/breakdown',      async (_req, res) => proxyGet(`${PYTHON_API}/signal/breakdown`, res));
+aiRouter.get('/news',           async (req, res)  => proxyGet(`${PYTHON_API}/news${req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''}`, res));
 aiRouter.get('/signal',         async (_req, res) => proxyGet(`${PYTHON_API}/signal`, res));
 aiRouter.get('/fusion',         async (_req, res) => proxyGet(`${PYTHON_API}/signal`, res));
 aiRouter.get('/history',        async (_req, res) => proxyGet(`${PYTHON_API}/history`, res));

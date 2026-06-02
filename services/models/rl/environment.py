@@ -13,17 +13,25 @@ Action space: Discrete(3)
   1 = BUY     — enter long (no-op if already long)
   2 = SELL    — exit long  (no-op if already flat)
 
-Reward (absolute portfolio return):
+Reward (absolute mark-to-market return):
   reward = agent_log_ret − cost − drawdown_penalty + sharpe_bonus − invalid_penalty
 
   agent_log_ret = market log-return when in position, 0 when flat.
-  Flat when market rises  → reward = 0   (no reward, but no benchmark penalty).
-  Flat when market falls  → reward = 0   (agent implicitly avoided the loss).
-  Long + market rises     → reward ≈ +log_ret − cost  (positive).
-  Long + market falls     → reward ≈ −log_ret − cost  (negative — incentives exit).
+  Long + market rises → reward ≈ +log_ret − cost  (credit for riding the trend).
+  Long + market falls → reward ≈ −log_ret − cost  (incentive to step aside).
+  Flat (up or down)   → reward = 0.
 
-  This formulation is learnable with the xgb_prob_up pipeline signal:
-  the policy can learn "BUY when prob_up is high, SELL when it falls".
+  Because the positive uptrend bars sum up while flat bars contribute 0,
+  buy-and-hold strictly dominates the always-flat policy — the agent is pulled
+  toward participating in rallies and exiting ahead of declines, learnable from
+  the xgb_prob_up pipeline signal.
+
+  A benchmark-relative (excess = agent_log_ret − bh_log_ret) reward was tried and
+  rejected: while long it is exactly 0 every bar, giving no credit for holding
+  through an uptrend, which collapsed the policy to a ~0.2%-in-market do-nothing
+  agent. Trade churn is controlled with a *modest* trade penalty plus the
+  min-hold / overtrading shaping below — a large trade penalty instead suppresses
+  participation entirely.
 
   Invalid actions (BUY when long, SELL when flat) incur INVALID_ACTION_PENALTY
   in addition to being no-ops, teaching the policy to avoid wasted actions.
@@ -173,7 +181,14 @@ class TradingEnv(gym.Env):
         # Buy-and-hold log-return for this bar (bh_equity tracking and reward)
         bh_log_ret = math.log(price_next / price_now) if price_now > 0 else 0.0
 
-        cost          = 0.0
+        # `real_cost` is the actual fee+slippage charged to equity on a position
+        # change. `trade_pen` is an artificial anti-churn shaping term that is
+        # subtracted from the REWARD only — never from equity. Keeping them
+        # separate is essential: folding TRADE_PENALTY into equity corrupts the
+        # reported return/Sharpe/drawdown (e.g. 4 trades at TRADE_PENALTY=0.02 wiped
+        # 16% of equity that no real market participant would ever pay).
+        real_cost     = 0.0
+        trade_pen     = 0.0
         prev_position = self._position
         invalid       = False
 
@@ -181,7 +196,8 @@ class TradingEnv(gym.Env):
             if self._position == 0.0:
                 self._position      = 1.0
                 self._entry_price   = price_now * (1 + _COST / 2)
-                cost                = _COST / 2 + TRADE_PENALTY
+                real_cost           = _COST / 2
+                trade_pen           = TRADE_PENALTY
                 self._steps_since_entry = 0
             else:
                 invalid = True   # BUY when already long
@@ -189,7 +205,8 @@ class TradingEnv(gym.Env):
         elif action == 2:  # SELL
             if self._position == 1.0:
                 self._position = 0.0
-                cost           = _COST / 2 + TRADE_PENALTY
+                real_cost      = _COST / 2
+                trade_pen      = TRADE_PENALTY
             else:
                 invalid = True   # SELL when already flat
             self._steps_no_trade = 0
@@ -198,17 +215,31 @@ class TradingEnv(gym.Env):
             if self._position == 1.0:
                 self._steps_since_entry += 1
 
-        # Agent's absolute log-return: realised only when in position
+        # Agent's actual log-return: realised only when in position
         in_market     = prev_position == 1.0 or (action == 1 and prev_position == 0.0)
         agent_log_ret = bh_log_ret if in_market else 0.0
 
-        # Update equities
-        self._equity    *= math.exp(agent_log_ret) * (1 - cost)
+        # Update equities — real fee/slippage only; benchmark tracks B&H
+        self._equity    *= math.exp(agent_log_ret) * (1 - real_cost)
         self._bh_equity *= math.exp(bh_log_ret)
         self._peak_equity = max(self._peak_equity, self._equity)
         drawdown = (self._peak_equity - self._equity) / self._peak_equity
 
-        # ── Reward: absolute portfolio return with shaped penalties/bonuses ────
+        # ── Reward: absolute mark-to-market return with shaped penalties ────────
+        # reward core = agent_log_ret − cost, where agent_log_ret is the position's
+        # actual per-bar log return (0 when flat):
+        #   Long + market up   → +  (credit for riding the trend)
+        #   Long + market down → −  (incentive to step aside before drawdowns)
+        #   Flat (up or down)  → 0  (no PnL)
+        # Buy-and-hold therefore strictly dominates the always-flat policy (it sums
+        # the positive uptrend bars instead of zeros), so the agent is pulled toward
+        # participating in rallies while exiting ahead of declines.
+        #
+        # NOTE: a benchmark-relative (excess = agent_log_ret − bh_log_ret) reward was
+        # tried and rejected — while long it yields exactly 0 every bar, giving the
+        # policy no credit for the main profitable behaviour (holding through an
+        # uptrend). Combined with trade costs that collapsed it to a 0.2%-in-market
+        # do-nothing policy. Absolute return keeps an informative in-position signal.
         self._return_buf.append(agent_log_ret)
         sharpe_bonus = 0.0
         if len(self._return_buf) >= SHARPE_WINDOW:
@@ -239,8 +270,10 @@ class TradingEnv(gym.Env):
             if fused_score != 0.0 and math.copysign(1, agent_log_ret) == math.copysign(1, fused_score):
                 align_bonus = SIGNAL_ALIGN_COEF * abs(fused_score) * abs(agent_log_ret)
 
+        # Reward sees both the real cost and the artificial trade penalty; equity
+        # (above) saw only the real cost.
         reward = float(
-            agent_log_ret - cost + sharpe_bonus
+            agent_log_ret - real_cost - trade_pen + sharpe_bonus
             - dd_penalty - invalid_penalty - flip_penalty - risky_penalty
             + align_bonus
         )

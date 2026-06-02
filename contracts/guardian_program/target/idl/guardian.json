@@ -1,0 +1,532 @@
+{
+  "address": "DVQ3uopMVLznw3tLJahTkfE1VwzNSPHo1Q8tTvUbjdrG",
+  "metadata": {
+    "name": "guardian",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "On-chain safety gate for the Solana AI Trading System."
+  },
+  "instructions": [
+    {
+      "name": "authorize_execution",
+      "docs": [
+        "The core authorisation check. Called by the backend (or any CPI caller",
+        "holding the `allowed_executor` signer) immediately before invoking the",
+        "Jupiter swap instruction in the same transaction. Creates a fresh",
+        "`ExecutionRecord` PDA seeded by `signal_hash` — replays automatically",
+        "fail because the account already exists.",
+        "",
+        "All four checks run before any state is written. If any one fails the",
+        "transaction rolls back and the swap leg is never reached."
+      ],
+      "discriminator": [
+        20,
+        171,
+        124,
+        206,
+        150,
+        135,
+        226,
+        97
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  117,
+                  97,
+                  114,
+                  100,
+                  105,
+                  97,
+                  110,
+                  45,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.admin",
+                "account": "GuardianConfig"
+              }
+            ]
+          }
+        },
+        {
+          "name": "execution_record",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  120,
+                  101,
+                  99,
+                  117,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  114,
+                  101,
+                  99,
+                  111,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "signal_hash"
+              }
+            ]
+          }
+        },
+        {
+          "name": "executor",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount_lamports",
+          "type": "u64"
+        },
+        {
+          "name": "confidence_bps",
+          "type": "u16"
+        },
+        {
+          "name": "signal_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "initialize_config",
+      "docs": [
+        "One-time setup. Creates the `GuardianConfig` PDA and locks in the",
+        "initial policy. The signer becomes the `admin` and the only account",
+        "allowed to call `set_emergency_stop` or re-initialise.",
+        "",
+        "* `max_trade_lamports`     - Hard ceiling on `amount_lamports` passed to",
+        "`authorize_execution`. Mirror of",
+        "`MAX_TRADE_SIZE_SOL * LAMPORTS_PER_SOL`.",
+        "* `max_daily_loss_lamports`- Currently informational (tracking lives",
+        "off-chain in `daily_volume.json`); stored",
+        "for future enforcement.",
+        "* `confidence_threshold_bps` - 0–10_000. 6_900 ≈ off-chain",
+        "`CONFIDENCE_THRESHOLD=0.69`.",
+        "* `allowed_executor`       - Pubkey of the backend wallet (or Phantom",
+        "key) that is permitted to call",
+        "`authorize_execution`. All other signers",
+        "are rejected."
+      ],
+      "discriminator": [
+        208,
+        127,
+        21,
+        1,
+        194,
+        190,
+        196,
+        70
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  117,
+                  97,
+                  114,
+                  100,
+                  105,
+                  97,
+                  110,
+                  45,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "admin"
+              }
+            ]
+          }
+        },
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "max_trade_lamports",
+          "type": "u64"
+        },
+        {
+          "name": "max_daily_loss_lamports",
+          "type": "u64"
+        },
+        {
+          "name": "confidence_threshold_bps",
+          "type": "u16"
+        },
+        {
+          "name": "allowed_executor",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "set_emergency_stop",
+      "docs": [
+        "Admin-only kill-switch. Flips `emergency_stop` to the supplied value.",
+        "All subsequent `authorize_execution` calls fail with `EmergencyStop`",
+        "until the admin flips it back."
+      ],
+      "discriminator": [
+        185,
+        103,
+        202,
+        188,
+        168,
+        230,
+        104,
+        177
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  117,
+                  97,
+                  114,
+                  100,
+                  105,
+                  97,
+                  110,
+                  45,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "admin"
+              }
+            ]
+          }
+        },
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "enabled",
+          "type": "bool"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "ExecutionRecord",
+      "discriminator": [
+        133,
+        201,
+        182,
+        206,
+        224,
+        111,
+        45,
+        168
+      ]
+    },
+    {
+      "name": "GuardianConfig",
+      "discriminator": [
+        253,
+        92,
+        160,
+        221,
+        64,
+        253,
+        141,
+        121
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "ConfigInitialized",
+      "discriminator": [
+        181,
+        49,
+        200,
+        156,
+        19,
+        167,
+        178,
+        91
+      ]
+    },
+    {
+      "name": "EmergencyStopSet",
+      "discriminator": [
+        51,
+        80,
+        158,
+        170,
+        142,
+        187,
+        112,
+        107
+      ]
+    },
+    {
+      "name": "ExecutionAuthorised",
+      "discriminator": [
+        187,
+        196,
+        195,
+        196,
+        113,
+        35,
+        96,
+        76
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "EmergencyStop",
+      "msg": "Emergency stop is active."
+    },
+    {
+      "code": 6001,
+      "name": "TradeSizeExceeded",
+      "msg": "Trade amount exceeds the configured maximum."
+    },
+    {
+      "code": 6002,
+      "name": "LowConfidence",
+      "msg": "Confidence is below the configured threshold."
+    },
+    {
+      "code": 6003,
+      "name": "NotAdmin",
+      "msg": "Only the admin can call this instruction."
+    },
+    {
+      "code": 6004,
+      "name": "NotExecutor",
+      "msg": "Only the configured executor can authorize a trade."
+    },
+    {
+      "code": 6005,
+      "name": "InvalidAmount",
+      "msg": "Amount must be a positive non-zero value."
+    },
+    {
+      "code": 6006,
+      "name": "InvalidBps",
+      "msg": "Basis-point value must be in [0, 10_000]."
+    }
+  ],
+  "types": [
+    {
+      "name": "ConfigInitialized",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "allowed_executor",
+            "type": "pubkey"
+          },
+          {
+            "name": "max_trade_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "confidence_threshold_bps",
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "EmergencyStopSet",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "enabled",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ExecutionAuthorised",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "executor",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "confidence_bps",
+            "type": "u16"
+          },
+          {
+            "name": "signal_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "ExecutionRecord",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "signal_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "executor",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "confidence_bps",
+            "type": "u16"
+          },
+          {
+            "name": "executed_at",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GuardianConfig",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "allowed_executor",
+            "type": "pubkey"
+          },
+          {
+            "name": "max_trade_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "max_daily_loss_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "confidence_threshold_bps",
+            "type": "u16"
+          },
+          {
+            "name": "emergency_stop",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    }
+  ]
+}

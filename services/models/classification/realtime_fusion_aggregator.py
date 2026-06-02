@@ -406,16 +406,26 @@ def main() -> int:
     rl_fresh = _rl_signal_is_fresh(rl_sig)
 
     if RL_OWNS_ACTION and rl_sig is not None and rl_fresh:
-        # PPO owns the action.
-        rl_score          = float(rl_sig["rl_score"])
-        final_fused_score = float(np.clip(rl_score, -1.0, 1.0))
-        ppo_action        = _PPO_SIGNAL_TO_ACTION.get(rl_sig["signal"], "HOLD")
+        # PPO owns the action — but only when it has a directional opinion.
+        rl_score   = float(rl_sig["rl_score"])
+        ppo_action = _PPO_SIGNAL_TO_ACTION.get(rl_sig["signal"], "HOLD")
         # Safety: high spoofing confidence forces HOLD even when PPO says trade.
         if decision.spoofing_confidence > SPOOFING_HOLD_THRESHOLD:
             ppo_action = "HOLD"
-        final_action     = ppo_action
-        final_confidence = float(rl_sig["confidence"])
-        decision_source  = "ppo"
+
+        if ppo_action != "HOLD":
+            # PPO has a directional opinion — it overrides fusion.
+            final_fused_score = float(np.clip(rl_score, -1.0, 1.0))
+            final_action      = ppo_action
+            final_confidence  = float(rl_sig["confidence"])
+            decision_source   = "ppo"
+        else:
+            # PPO is neutral — fall back to the XGBoost/sentiment fusion action
+            # so a confident XGBoost signal is not silenced by an uncertain PPO.
+            final_fused_score = base_fused_score
+            final_action      = base_action
+            final_confidence  = abs(base_fused_score)
+            decision_source   = "fusion_ppo_neutral"
     elif rl_sig is not None and not RL_OWNS_ACTION:
         # Legacy weighted blend: PPO nudges the fused score at WEIGHT_RL.
         rl_score          = float(rl_sig["rl_score"])

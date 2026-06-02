@@ -14,9 +14,11 @@ Or from the repo root:
 
 from __future__ import annotations
 
+import csv as _csv
 import json
 import logging as _logging
 import os
+import re as _re
 import socket
 import subprocess
 import sys
@@ -64,6 +66,7 @@ _PATHS = {
     "scheduler":      REALTIME_DIR / "scheduler_status.json",
 }
 HISTORY_PATH = REALTIME_DIR / "paper_trading_history.json"
+NEWS_ARTICLES_PATH = REPO_ROOT / "services" / "models" / "nlp" / "data" / "processed" / "processed_articles.csv"
 MODEL_DIR    = REPO_ROOT / "services" / "models" / "models"
 REPORTS_DIR  = REPO_ROOT / "services" / "models" / "classification" / "reports"
 
@@ -155,9 +158,33 @@ def _parse_host_port(url: str, default_port: int) -> tuple[str, int]:
         return "localhost", default_port
 
 
-# ── Rate-limit state ──────────────────────────────────────────────────────────
+# ── Rate-limit state ─────────────────────────────────────────────────────────
+# File-backed so the limit works correctly under multi-worker uvicorn
+# (each worker would otherwise have its own independent in-memory timestamp).
 _SCHEDULER_RATE_LIMIT_S = int(os.environ.get("SCHEDULER_RATE_LIMIT_S", "60"))
-_last_scheduler_trigger: datetime | None = None
+_RATE_LIMIT_PATH = REALTIME_DIR / "scheduler_rate_limit.json"
+
+
+def _rl_get() -> datetime | None:
+    """Return the timestamp of the last scheduler trigger (cross-worker safe)."""
+    if not _RATE_LIMIT_PATH.exists():
+        return None
+    try:
+        raw = json.loads(_RATE_LIMIT_PATH.read_text()).get("triggered_at_utc")
+        return (
+            datetime.fromisoformat(str(raw).replace("Z", "+00:00")).astimezone(timezone.utc)
+            if raw else None
+        )
+    except Exception:
+        return None
+
+
+def _rl_set(now: datetime) -> None:
+    try:
+        REALTIME_DIR.mkdir(parents=True, exist_ok=True)
+        _RATE_LIMIT_PATH.write_text(json.dumps({"triggered_at_utc": now.isoformat()}))
+    except Exception:
+        pass  # persistence failure is non-fatal; the run proceeds
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -308,7 +335,6 @@ def get_signal_breakdown() -> dict[str, Any]:
 
     # Extract real sentiment from the fused reasoning string
     # (sentiment_status.json is a daemon health file, not a sentiment result)
-    import re as _re
     raw_sent = (fused.get("reasoning") or {}).get("sentiment", "")
     upper_sent = raw_sent.upper()
     sent_label = (
@@ -353,6 +379,56 @@ def get_signal_breakdown() -> dict[str, Any]:
         "sentiment_relevance": float(fused.get("sentiment_relevance", 0)),
         "reason": fused.get("reason", ""),
     }
+
+
+@app.get("/news", tags=["sentiment"])
+def get_news(limit: int = 20) -> dict[str, Any]:
+    """
+    Recent news articles with per-article FinBERT sentiment.
+
+    Source: the NLP pipeline's processed_articles.csv (GDELT + RSS feeds).
+    Read-only. Returns an empty list (not an error) when the file is absent or
+    has no rows, so the dashboard can render a clean empty state.
+    """
+    limit = max(1, min(limit, 200))
+    if not NEWS_ARTICLES_PATH.exists():
+        return {"articles": [], "count": 0, "source_file_present": False}
+
+    try:
+        with open(NEWS_ARTICLES_PATH, newline="", encoding="utf-8") as f:
+            rows = list(_csv.DictReader(f))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to read news data: {exc}")
+
+    def _num(v: Any) -> float | None:
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    def _flag(v: Any) -> bool:
+        return str(v).strip().lower() in ("1", "1.0", "true", "yes")
+
+    rows.sort(key=lambda r: r.get("timestamp", ""), reverse=True)
+    articles = [
+        {
+            "timestamp":         r.get("timestamp") or None,
+            # CSV column `source` holds the feed tag (gdelt/rss); `feed_source`
+            # holds the publisher name. Expose them with intuitive field names.
+            "feed_source":       (r.get("source") or "").upper() or None,   # GDELT | RSS
+            "source":            r.get("feed_source") or None,              # publisher
+            "title":             r.get("title") or None,
+            "url":               r.get("url") or None,
+            "sentiment_label":   (r.get("sentiment_label") or "").upper() or None,
+            "sentiment_score":   _num(r.get("sentiment_score")),
+            "confidence":        _num(r.get("confidence")),
+            "relevance_score":   _num(r.get("relevance_score")),
+            "event_type":        r.get("event_type") or None,
+            "high_impact_event": _flag(r.get("high_impact_event")),
+        }
+        for r in rows[:limit]
+    ]
+    return {"articles": articles, "count": len(articles), "source_file_present": True}
 
 
 @app.get("/rl-signal", tags=["trading"])
@@ -539,17 +615,17 @@ def trigger_pipeline_run() -> dict[str, Any]:
     Poll GET /signal or GET /status to see the result.
     Rate-limited to one call per 60 seconds.
     """
-    global _last_scheduler_trigger
     now = datetime.now(timezone.utc)
-    if _last_scheduler_trigger is not None:
-        elapsed = (now - _last_scheduler_trigger).total_seconds()
+    last = _rl_get()
+    if last is not None:
+        elapsed = (now - last).total_seconds()
         if elapsed < _SCHEDULER_RATE_LIMIT_S:
             retry_in = int(_SCHEDULER_RATE_LIMIT_S - elapsed)
             raise HTTPException(
                 status_code=429,
                 detail=f"Rate limited. Pipeline was triggered {int(elapsed)}s ago. Retry in {retry_in}s.",
             )
-    _last_scheduler_trigger = now
+    _rl_set(now)
 
     # Clear the stop flag so the daemon resumes if it was paused
     if SCHEDULER_STOP_FLAG.exists():
@@ -563,13 +639,15 @@ def trigger_pipeline_run() -> dict[str, Any]:
 
     REALTIME_DIR.mkdir(parents=True, exist_ok=True)
     _log_fh = open(_PIPELINE_LOG, "w")
-    proc = subprocess.Popen(
-        [sys.executable, str(scheduler_script), "--once"],
-        cwd=str(REPO_ROOT),
-        stdout=_log_fh,
-        stderr=subprocess.STDOUT,
-    )
-    _log_fh.close()
+    try:
+        proc = subprocess.Popen(
+            [sys.executable, str(scheduler_script), "--once"],
+            cwd=str(REPO_ROOT),
+            stdout=_log_fh,
+            stderr=subprocess.STDOUT,
+        )
+    finally:
+        _log_fh.close()
     return {
         "status": "triggered",
         "pid": proc.pid,
@@ -662,13 +740,15 @@ def trigger_retrain() -> dict[str, Any]:
 
     REALTIME_DIR.mkdir(parents=True, exist_ok=True)
     _log_fh = open(_RETRAIN_LOG, "w")
-    proc = subprocess.Popen(
-        [sys.executable, str(retrain_script)],
-        cwd=str(REPO_ROOT),
-        stdout=_log_fh,
-        stderr=subprocess.STDOUT,
-    )
-    _log_fh.close()
+    try:
+        proc = subprocess.Popen(
+            [sys.executable, str(retrain_script)],
+            cwd=str(REPO_ROOT),
+            stdout=_log_fh,
+            stderr=subprocess.STDOUT,
+        )
+    finally:
+        _log_fh.close()
     return {
         "status": "triggered",
         "pid": proc.pid,
@@ -691,4 +771,10 @@ if DASHBOARD_DIST.exists():
     @app.get("/app", include_in_schema=False)
     @app.get("/app/", include_in_schema=False)
     def dashboard_index() -> FileResponse:
+        return FileResponse(DASHBOARD_DIST / "index.html")
+
+    @app.get("/app/{path:path}", include_in_schema=False)
+    def dashboard_spa(path: str) -> FileResponse:  # noqa: ARG001
+        # SPA catch-all: every deep link (e.g. /app/dashboard, /app/settings)
+        # serves index.html so the React router handles the path client-side.
         return FileResponse(DASHBOARD_DIST / "index.html")

@@ -65,7 +65,6 @@ from config import (
     RL_SIGNAL_PATH,
     RL_STATE_PATH,
     SLIPPAGE_PCT,
-    TRADE_PENALTY,
     XGB_FUSED_SIGNAL_PATH,
     XGB_SIGNAL_PATH,
 )
@@ -150,16 +149,19 @@ def _advance_position_state(state: dict, action_idx: int, current_price: float) 
             state["equity"] = float(state["equity"]) * price_ratio
 
     # ── Apply action ───────────────────────────────────────────────────────────
+    # Equity tracks REAL fee/slippage only (matches TradingEnv.step). TRADE_PENALTY
+    # is a training-reward shaping term and must NOT be charged to live equity, or
+    # the rel_perf observation feature drifts away from the trained distribution.
     cost = 0.0
     if action_idx == 1 and prev_position == 0.0:       # BUY
         state["position"]    = 1.0
         state["entry_price"] = current_price
-        cost = _COST_HALF + TRADE_PENALTY
+        cost = _COST_HALF
         state["steps_since_trade"] = 0
     elif action_idx == 2 and prev_position == 1.0:     # SELL
         state["position"]    = 0.0
         state["entry_price"] = 0.0
-        cost = _COST_HALF + TRADE_PENALTY
+        cost = _COST_HALF
         state["steps_since_trade"] = 0
     else:                                               # HOLD or no-op
         state["steps_since_trade"] = int(state["steps_since_trade"]) + 1

@@ -36,8 +36,19 @@ import {
   writeUserMaxTradeSize,
   writeUserRiskLevel,
 } from '../services/executionState.service';
+import type { AutoExecutorStatus } from '../services/autoExecutor.service';
 
 export const executionRouter = Router();
+
+// ── Live AutoExecutor runtime status ────────────────────────────────────────
+// server.ts registers the running AutoExecutor instance here so the
+// /auto-execute/status route can surface its runtime state (last signal,
+// last skip reason, cooldown window) without importing the class (avoids a
+// circular import). Null until registration completes at startup.
+let _autoExecutorStatus: (() => AutoExecutorStatus) | null = null;
+export function registerAutoExecutor(getStatus: () => AutoExecutorStatus): void {
+  _autoExecutorStatus = getStatus;
+}
 
 // ── Shared workflow instance ────────────────────────────────────────────────
 // One instance per process. The Guardian inside reads env at validate-time
@@ -63,7 +74,12 @@ const ExecutionRequestSchema = z.object({
     .optional(),
 });
 
-function parseRequest(req: Request, res: Response): ExecutionRequest | null {
+// Body fields validated from the HTTP request. `daily_executed_sol` is always
+// injected server-side (never trusted from the client) so it is intentionally
+// absent from the schema and added explicitly at each call site.
+type ParsedRequest = z.infer<typeof ExecutionRequestSchema>;
+
+function parseRequest(req: Request, res: Response): ParsedRequest | null {
   const parsed = ExecutionRequestSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
     res.status(400).json({
@@ -75,7 +91,7 @@ function parseRequest(req: Request, res: Response): ExecutionRequest | null {
     });
     return null;
   }
-  return parsed.data as ExecutionRequest;
+  return parsed.data;
 }
 
 // ── POST /validate ──────────────────────────────────────────────────────────
@@ -183,10 +199,18 @@ executionRouter.post('/auto-execute/disable', (_req, res) => {
 
 // ── GET /auto-execute/status ─────────────────────────────────────────────────
 executionRouter.get('/auto-execute/status', (_req, res) => {
+  const runtime = _autoExecutorStatus?.() ?? null;
   res.json({
     enabled: readAutoExecute(),
     user_risk_level: readUserRiskLevel(),
     max_trade_size_sol: readUserMaxTradeSize(),
+    // Live runtime state from the running AutoExecutor (null if not yet registered).
+    wallet_mode:          runtime?.walletMode ?? null,
+    last_signal_key:      runtime?.lastSignalKey ?? null,
+    last_executed_at:     runtime?.lastExecutedAt ?? null,
+    last_skipped_reason:  runtime?.lastSkippedReason ?? null,
+    dedup_window_seconds: runtime?.dedupWindowSeconds ?? null,
+    poll_interval_seconds: runtime?.pollIntervalSeconds ?? null,
   });
 });
 

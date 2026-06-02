@@ -74,7 +74,6 @@ export class GuardianValidator {
   }
 
   validate(input: GuardianInput): GuardianResult {
-    const passedReasons: string[] = [];
     const checks: Array<() => RuleFailure | null> = [
       // Highest priority: kill-switch and prompt-injection. These run BEFORE
       // any input parsing so a malicious request cannot trick the validator
@@ -115,7 +114,6 @@ export class GuardianValidator {
           evaluated_at_utc: new Date(this.now()).toISOString(),
         };
       }
-      passedReasons.push(this.describeRule(rule));
     }
 
     const action: ApprovedAction = {
@@ -143,7 +141,4 @@ export class GuardianValidator {
     };
   }
 
-  private describeRule(_rule: () => RuleFailure | null): string {
-    return 'rule passed';
-  }
 }

@@ -1,5 +1,6 @@
 import { useTradingStore } from '../store';
 import { parseMarketSymbol } from '../utils/symbol';
+import logoImg from '../assets/logo.png';
 
 function Skeleton({ w = 'w-16' }: { w?: string }) {
   return <div className={`h-4 ${w} rounded animate-pulse`} style={{ background: 'var(--border)' }} />;
@@ -24,8 +25,7 @@ export function MarketHeader() {
       style={{ background: 'var(--bg-panel)', borderBottom: '1px solid var(--border)' }}>
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-1.5">
-          <div className="w-6 h-6 rounded flex items-center justify-center font-bold text-xs"
-            style={{ background: 'var(--accent)', color: 'var(--bg-page)' }}>S</div>
+          <img src={logoImg} alt="Solvanta AI" style={{ width: 28, height: 28, objectFit: 'contain' }} />
           <span className="font-bold text-sm tracking-wide" style={{ color: 'var(--text-1)' }}>Solvanta AI</span>
         </div>
         <div className="h-4 w-px" style={{ background: 'var(--border)' }} />

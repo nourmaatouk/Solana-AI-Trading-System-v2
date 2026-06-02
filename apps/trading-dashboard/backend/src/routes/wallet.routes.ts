@@ -4,6 +4,11 @@ import {
   isValidPublicKey,
   requestDevnetAirdrop,
 } from '../services/walletRpc.service';
+import {
+  SOLANA_CLUSTER,
+  DEVNET_AIRDROP_AMOUNT_SOL,
+  MAX_DEVNET_AIRDROP_SOL,
+} from '../config';
 
 export const walletRouter = Router();
 
@@ -20,7 +25,7 @@ walletRouter.post('/session', (req, res) => {
   }
   return res.json({
     publicKey: publicKey.trim(),
-    cluster: process.env.SOLANA_CLUSTER ?? 'devnet',
+    cluster: SOLANA_CLUSTER,
     timestamp: new Date().toISOString(),
   });
 });
@@ -43,10 +48,9 @@ walletRouter.get('/balance/:publicKey', async (req, res) => {
 // POST /api/wallet/airdrop-devnet
 // Requests a devnet SOL airdrop. Blocked on mainnet and testnet.
 walletRouter.post('/airdrop-devnet', async (req, res) => {
-  const cluster = process.env.SOLANA_CLUSTER ?? 'devnet';
-  if (cluster !== 'devnet') {
+  if (SOLANA_CLUSTER !== 'devnet') {
     return res.status(403).json({
-      error: `Airdrop is only available on devnet (current cluster: ${cluster}).`,
+      error: `Airdrop is only available on devnet (current cluster: ${SOLANA_CLUSTER}).`,
     });
   }
 
@@ -62,13 +66,11 @@ walletRouter.post('/airdrop-devnet', async (req, res) => {
     return res.status(400).json({ error: 'Invalid Solana public key format' });
   }
 
-  const defaultAmount = parseFloat(process.env.DEVNET_AIRDROP_AMOUNT_SOL ?? '1');
-  const maxAmount = parseFloat(process.env.MAX_DEVNET_AIRDROP_SOL ?? '2');
   const requested =
     typeof amount_sol === 'number' && Number.isFinite(amount_sol) && amount_sol > 0
       ? amount_sol
-      : defaultAmount;
-  const clamped = Math.min(requested, maxAmount);
+      : DEVNET_AIRDROP_AMOUNT_SOL;
+  const clamped = Math.min(requested, MAX_DEVNET_AIRDROP_SOL);
 
   try {
     const result = await requestDevnetAirdrop(publicKey.trim(), clamped);

@@ -53,6 +53,22 @@ const ConfigSchema = z.object({
   WS_RECONNECT_MAX_MS:     positiveInt.default('30000'),
   WS_KLINE_RETRY_BASE_MS:  positiveInt.default('2000'),
   SIGNAL_POLL_INTERVAL_MS: positiveInt.default('10000'),
+
+  // Solana / wallet
+  SOLANA_CLUSTER: z.string().default('devnet'),
+
+  // Devnet airdrop limits — validated here so a malformed env var fails loudly
+  // at startup rather than silently falling back to a magic number.
+  DEVNET_AIRDROP_AMOUNT_SOL: z
+    .string()
+    .transform((v) => parseFloat(v))
+    .pipe(z.number().positive())
+    .default('1'),
+  MAX_DEVNET_AIRDROP_SOL: z
+    .string()
+    .transform((v) => parseFloat(v))
+    .pipe(z.number().positive())
+    .default('2'),
 });
 
 const parsed = ConfigSchema.safeParse(process.env);
@@ -91,3 +107,7 @@ export const WS_RECONNECT_BASE_MS    = env.WS_RECONNECT_BASE_MS;
 export const WS_RECONNECT_MAX_MS     = env.WS_RECONNECT_MAX_MS;
 export const WS_KLINE_RETRY_BASE_MS  = env.WS_KLINE_RETRY_BASE_MS;
 export const SIGNAL_POLL_INTERVAL_MS = env.SIGNAL_POLL_INTERVAL_MS;
+
+export const SOLANA_CLUSTER              = env.SOLANA_CLUSTER;
+export const DEVNET_AIRDROP_AMOUNT_SOL   = env.DEVNET_AIRDROP_AMOUNT_SOL;
+export const MAX_DEVNET_AIRDROP_SOL      = env.MAX_DEVNET_AIRDROP_SOL;

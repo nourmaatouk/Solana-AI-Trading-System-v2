@@ -89,9 +89,19 @@ const ExecutionEnvSchema = z.object({
     .string()
     .default('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'),
 
-  // ── On-chain Guardian (future) ─────────────────────────────────────────────
-  // Stub — no Anchor program exists yet. Set once the program is deployed.
+  // ── On-chain Guardian ──────────────────────────────────────────────────────
+  // Program ID: DVQ3uopMVLznw3tLJahTkfE1VwzNSPHo1Q8tTvUbjdrG (devnet)
+  // Set ENABLE_ONCHAIN_GUARDIAN=true after deploying + initializing the program.
+  // When false, only the off-chain TypeScript Guardian runs (default behaviour).
+  ENABLE_ONCHAIN_GUARDIAN: boolFromString.default('false'),
   GUARDIAN_PROGRAM_ID: z.string().optional(),
+  // Public key of the wallet that called initialize_config (the GuardianConfig
+  // PDA admin). Defaults to SOLANA_PUBLIC_KEY when not set.
+  GUARDIAN_ADMIN_PUBKEY: z.string().optional(),
+  // Private key that signs authorize_execution. Defaults to SOLANA_PRIVATE_KEY
+  // when not set. Use this when the allowed_executor in the GuardianConfig PDA
+  // differs from the trading keypair (SOLANA_PRIVATE_KEY).
+  GUARDIAN_PRIVATE_KEY: z.string().optional(),
 
   PYTHON_API: z.string().url().default('http://localhost:8000'),
   PYTHON_API_KEY: z.string().optional(),

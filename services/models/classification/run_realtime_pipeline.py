@@ -103,12 +103,17 @@ def build_steps(args: argparse.Namespace) -> list[PipelineStep]:
             BASE_DIR.parent / "gnn" / "realtime_gnn_predictor.py",
             critical=False,
         ))
+        # Pre-fusion RL run: uses the PREVIOUS cycle's last_fused_decision.json
+        # (best available context before fusion runs this cycle). This gives the
+        # fusion aggregator a *fresh* RL signal so decision_source becomes "ppo"
+        # rather than "fusion_rl_stale", significantly raising fused confidence.
+        steps.append(PipelineStep("rl_predictor_prefusion", BASE_DIR.parent / "rl" / "realtime_rl_predictor.py", critical=False))
 
     if args.fusion_aggregate:
         steps.append(PipelineStep("fusion_aggregate", BASE_DIR / "realtime_fusion_aggregator.py", critical=False))
 
-    # Fusion-aware placement: runs after fusion_aggregate so the 56-dim
-    # fusion-v2 PPO model receives the current fused_score and risk_encoded.
+    # Post-fusion RL run: re-runs with the NEW fused_score and risk_encoded so
+    # the *next* pipeline cycle starts with an up-to-date RL signal.
     if args.fusion_aggregate or args.paper_trade:
         steps.append(PipelineStep("rl_predictor", BASE_DIR.parent / "rl" / "realtime_rl_predictor.py", critical=False))
 

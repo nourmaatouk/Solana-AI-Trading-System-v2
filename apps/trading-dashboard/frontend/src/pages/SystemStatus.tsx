@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTradingStore } from '../store';
 import { fetchStatus, fetchScheduler, fetchDrift, fetchRetrainStatus, triggerRetrain, fetchAccuracy } from '../services/api';
+import { fetchAutoExecuteStatus, fetchExecutionStatus, type AutoExecuteStatusDto, type ExecutionStatusDto } from '../services/executionApi';
 
 interface Step {
   name: string;
@@ -68,12 +69,16 @@ export function SystemStatus() {
   const connectionStatus = useTradingStore((s) => s.connectionStatus);
   const exchange = useTradingStore((s) => s.exchange);
   const ticker = useTradingStore((s) => s.ticker);
+  const uiMode = useTradingStore((s) => s.mode);
 
   const [pipeline, setPipeline]   = useState<PipelineStatus | null>(null);
   const [scheduler, setScheduler] = useState<SchedulerInfo | null>(null);
   const [drift, setDrift]         = useState<DriftStatus | null>(null);
   const [retrain, setRetrain]     = useState<RetrainLog | null>(null);
   const [accuracy, setAccuracy]   = useState<AccuracySummary | null>(null);
+  const [autoExec, setAutoExec]   = useState<AutoExecuteStatusDto | null>(null);
+  const [execStatus, setExecStatus] = useState<ExecutionStatusDto | null>(null);
+  const [autoExecOffline, setAutoExecOffline] = useState(false);
   const [retraining, setRetraining] = useState(false);
   const [loading, setLoading]     = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
@@ -81,18 +86,24 @@ export function SystemStatus() {
   const load = async () => {
     setLoading(true);
     try {
-      const [p, s, d, r, a] = await Promise.allSettled([
+      const [p, s, d, r, a, ae, es] = await Promise.allSettled([
         fetchStatus()        as Promise<PipelineStatus>,
         fetchScheduler()     as Promise<SchedulerInfo>,
         fetchDrift()         as unknown as Promise<DriftStatus>,
         fetchRetrainStatus() as unknown as Promise<RetrainLog>,
         fetchAccuracy()      as unknown as Promise<AccuracySummary>,
+        fetchAutoExecuteStatus(),
+        fetchExecutionStatus(),
       ]);
       if (p.status === 'fulfilled') setPipeline(p.value);
       if (s.status === 'fulfilled') setScheduler(s.value);
       if (d.status === 'fulfilled') setDrift(d.value);
       if (r.status === 'fulfilled') setRetrain(r.value);
       if (a.status === 'fulfilled') setAccuracy(a.value);
+      if (ae.status === 'fulfilled') setAutoExec(ae.value);
+      if (es.status === 'fulfilled') setExecStatus(es.value);
+      // The AutoExecutor card is "offline" only when BOTH its sources fail.
+      setAutoExecOffline(ae.status === 'rejected' && es.status === 'rejected');
       setLastRefresh(new Date());
     } finally {
       setLoading(false);
@@ -114,6 +125,37 @@ export function SystemStatus() {
 
   const steps: Step[] = Array.isArray(pipeline?.steps) ? pipeline!.steps : [];
 
+  // ── AutoExecutor derived status (all from real backend data) ──
+  const aeEnabled    = autoExec?.enabled ?? false;
+  const execMode     = (execStatus?.execution_mode ?? uiMode).toUpperCase();
+  const mainnetOff   = execStatus ? !execStatus.allow_mainnet : true;
+  const eStop        = execStatus?.emergency_stop?.enabled ?? false;
+  const lastExec     = execStatus?.last_execution ?? null;
+  const gDecision    = lastExec?.guardian?.decision ?? null;            // APPROVE | BLOCK
+  const gBlockedBy   = lastExec?.guardian?.blocked_by ?? null;
+  const gReason      = lastExec?.guardian?.reasons?.[0] ?? null;
+  const lastSide     = lastExec?.guardian?.sanitized_action?.side ?? null;
+  const lastAction   = gDecision === 'BLOCK'
+    ? (gBlockedBy === 'ACTION_HOLD' ? 'HOLD' : 'BLOCKED')
+    : (lastSide ?? '—');
+  const lastExecTs   = lastExec?.execution?.confirmed_at_utc
+    ?? lastExec?.execution?.submitted_at_utc
+    ?? lastExec?.request_completed_at_utc
+    ?? autoExec?.last_executed_at
+    ?? null;
+  const dedupSec     = autoExec?.dedup_window_seconds ?? null;
+  const pollSec      = autoExec?.poll_interval_seconds ?? null;
+  const lastSigKey   = autoExec?.last_signal_key ?? null;
+  const lastSkip     = autoExec?.last_skipped_reason ?? null;
+  const aeNoData     = !autoExec && !execStatus;
+  const fmt = (ts: string | null | undefined) =>
+    ts ? new Date(ts).toLocaleString() : '—';
+  const actionColor =
+    lastAction === 'BUY' ? 'var(--green)'
+    : lastAction === 'SELL' ? 'var(--red)'
+    : lastAction === 'BLOCKED' ? 'var(--red)'
+    : 'var(--accent)';
+
   return (
     <div className="flex-1 overflow-y-auto p-6" style={{ background: 'var(--bg-page)' }}>
       <div className="max-w-2xl mx-auto space-y-4">
@@ -134,6 +176,87 @@ export function SystemStatus() {
         {lastRefresh && (
           <p className="text-xs" style={{ color: 'var(--text-3)' }}>Last refreshed: {lastRefresh.toLocaleTimeString()}</p>
         )}
+
+        {/* AutoExecutor */}
+        <div className="rounded-xl p-5" style={card}>
+          <div className="flex items-center justify-between mb-1">
+            <div className="font-semibold text-sm" style={{ color: 'var(--text-1)' }}>AutoExecutor</div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold px-2 py-0.5 rounded"
+                style={{ color: execMode === 'MAINNET' ? 'var(--red)' : execMode === 'DEVNET' ? '#a78bfa' : '#0ea5e9', border: '1px solid currentColor' }}>
+                {execMode}
+              </span>
+              <span className="text-xs font-bold px-2 py-0.5 rounded-full border"
+                style={aeEnabled
+                  ? { color: 'var(--green)', background: 'var(--green-bg)', borderColor: 'var(--green-bd)' }
+                  : { color: 'var(--text-3)', background: 'var(--bg-sub)', borderColor: 'var(--border)' }}>
+                {aeEnabled ? '● AUTO ON' : '○ AUTO OFF'}
+              </span>
+            </div>
+          </div>
+          <p className="text-xs mb-3" style={{ color: 'var(--text-3)' }}>
+            Every automatic trade passes through the Guardian — it is <strong style={{ color: 'var(--text-2)' }}>never bypassed</strong>.
+          </p>
+
+          {aeNoData ? (
+            <div className="text-sm px-3 py-2 rounded-lg"
+              style={{ color: autoExecOffline ? 'var(--red)' : 'var(--text-3)', background: autoExecOffline ? 'var(--red-bg)' : 'var(--bg-sub)', border: `1px solid ${autoExecOffline ? 'var(--red-bd)' : 'var(--border)'}` }}>
+              {autoExecOffline ? 'AutoExecutor status unavailable — execution backend offline.' : 'Loading AutoExecutor status…'}
+            </div>
+          ) : (
+            <>
+              {eStop && (
+                <div className="text-xs font-bold px-3 py-2 rounded-lg mb-3"
+                  style={{ color: 'var(--red)', background: 'var(--red-bg)', border: '1px solid var(--red-bd)' }}>
+                  ⛔ EMERGENCY STOP ACTIVE — all execution is halted until it is cleared.
+                </div>
+              )}
+              <div className="space-y-2">
+                {[
+                  { label: 'AutoExecutor', value: aeEnabled ? 'ENABLED' : 'DISABLED', dot: aeEnabled },
+                  { label: 'Execution mode', value: execMode },
+                  { label: 'Your selected mode', value: uiMode.toUpperCase() },
+                  { label: 'Duplicate-signal cooldown', value: dedupSec != null ? `${dedupSec}s window` : '—' },
+                  { label: 'Poll fallback', value: pollSec != null ? `every ${pollSec}s` : '—' },
+                  { label: 'Last action processed', value: lastAction, color: actionColor },
+                  { label: 'Last Guardian decision', value: gDecision ? (gDecision === 'BLOCK' ? `BLOCKED — ${gBlockedBy ?? gReason ?? 'see reason'}` : 'APPROVED') : '—', color: gDecision === 'BLOCK' ? 'var(--red)' : gDecision === 'APPROVE' ? 'var(--green)' : undefined },
+                  { label: 'Last execution', value: fmt(lastExecTs) },
+                  { label: 'Last signal key', value: lastSigKey ? `${lastSigKey.slice(0, 24)}…` : '—' },
+                  { label: 'Last skip reason', value: lastSkip ?? '—' },
+                ].map((row) => (
+                  <div key={row.label} className="flex items-center justify-between gap-3 py-1.5 last:border-0"
+                    style={{ borderBottom: '1px solid var(--border)' }}>
+                    <div className="flex items-center gap-2">
+                      {'dot' in row && row.dot !== undefined && <StatusDot ok={row.dot as boolean} />}
+                      <span className="text-sm" style={{ color: 'var(--text-2)' }}>{row.label}</span>
+                    </div>
+                    <span className="text-xs font-mono text-right" style={{ color: (row as { color?: string }).color ?? 'var(--text-3)' }}>{row.value}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 mt-3">
+                {mainnetOff && (
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded"
+                    style={{ color: 'var(--green)', background: 'var(--green-bg)', border: '1px solid var(--green-bd)' }}
+                    title="Mainnet execution is hard-disabled (ALLOW_MAINNET_EXECUTION=false).">
+                    🔒 MAINNET DISABLED
+                  </span>
+                )}
+              </div>
+
+              {!aeEnabled && (
+                <p className="text-xs mt-3" style={{ color: 'var(--text-3)' }}>
+                  Auto-execution is off — you can still trigger trades manually on the{' '}
+                  <strong style={{ color: 'var(--accent)' }}>
+                    {uiMode === 'devnet' ? 'Execution' : 'Paper Trading'}
+                  </strong>{' '}
+                  page (each one still passes through the Guardian).
+                </p>
+              )}
+            </>
+          )}
+        </div>
 
         {/* Market data */}
         <div className="rounded-xl p-5" style={card}>

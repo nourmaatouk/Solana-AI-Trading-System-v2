@@ -6,10 +6,10 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-guardian = "Gard1nGuard1anGuard1anGuard1anGuard1anGuard1an1"
+guardian = "DVQ3uopMVLznw3tLJahTkfE1VwzNSPHo1Q8tTvUbjdrG"
 
 [programs.devnet]
-guardian = "Gard1nGuard1anGuard1anGuard1anGuard1anGuard1an1"
+guardian = "DVQ3uopMVLznw3tLJahTkfE1VwzNSPHo1Q8tTvUbjdrG"
 
 # Both Program IDs above are placeholders. They are overwritten the first time
 # `anchor build` runs (the Anchor build step calls `solana-keygen new` for the

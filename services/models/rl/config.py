@@ -116,11 +116,22 @@ RL_CONFIDENCE_THRESHOLD = float(os.environ.get("RL_CONFIDENCE_THRESHOLD", "0.60"
 
 # ── EvalCallback frequency floor ──────────────────────────────────────────────
 PPO_EVAL_FREQ_MIN = 10_000
+# Minimum valid round-trips a checkpoint must execute on the validation episode to
+# be eligible as "best model". Stops TradingEvalCallback from selecting the
+# degenerate do-nothing policy (which a plain reward-based EvalCallback picks,
+# because under the absolute-return reward a flat episode scores 0 and beats every
+# checkpoint that traded at a net loss).
+MIN_EVAL_ROUND_TRIPS = 5
 
 # ── Reward shaping ────────────────────────────────────────────────────────────
 # Drawdown penalty applied only while in position.
 DRAWDOWN_PENALTY_COEF  = 0.02   # small stop-loss incentive while holding
-# Per-trade cost on top of fee/slippage. Set high to strongly penalise overtrading.
+# Per-trade penalty applied to the REWARD only (never to equity — see TradingEnv).
+# Anti-churn shaping under the absolute-return reward. Tuning history (200K-step
+# smoke, val total-return / Sharpe / max-drawdown, after the equity-cost fix):
+#   0.002 → churn, blew up to −50% / Sharpe −6.1 / 51% DD.
+#   0.005 → stable +2.4% / Sharpe +0.21 / 9.8% DD, survived full val.  ← chosen
+#   0.01+ → over-suppressed (agent stops participating).
 TRADE_PENALTY          = 0.005
 # Penalty for an invalid action: SELL when already flat, or BUY when already long.
 # Raised from 0.002 to 0.01 — the aligned model had ~3987 invalid SELLs per episode.
@@ -132,9 +143,11 @@ SHARPE_REWARD_COEF     = 0.0
 
 # ── Fusion→PPO v2 additional reward shaping ───────────────────────────────────
 # Penalty for closing a position within MIN_HOLD_STEPS bars of opening it.
-# Prevents the policy from churning (enter → exit → enter → exit …).
-OVERTRADING_PENALTY    = 0.003
-MIN_HOLD_STEPS         = 4      # minimum bars to hold before SELL without penalty (1 hour)
+# Prevents the policy from churning (enter → exit → enter → exit …). A 12-bar
+# (3-hour) minimum hold paired with TRADE_PENALTY=0.005 gave the stable positive
+# policy; shorter windows let the flip-flop attractor (→ fee-bleed blowup) return.
+OVERTRADING_PENALTY    = 0.005
+MIN_HOLD_STEPS         = 12     # minimum bars to hold before SELL without penalty (3 hours)
 # Extra penalty for BUY action when risk_encoded == 1.0 (HIGH risk regime).
 RISKY_BUY_PENALTY      = 0.005
 # Small bonus when the portfolio return sign matches the fused_score sign,

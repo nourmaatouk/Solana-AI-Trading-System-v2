@@ -116,6 +116,10 @@ export interface AutoExecutorStatus {
   lastSignalKey: string | null;
   lastExecutedAt: string | null;
   lastSkippedReason: string | null;
+  /** Duplicate-signal cooldown window (seconds) — a signal key can't re-fire within this. */
+  dedupWindowSeconds: number;
+  /** Fallback poll cadence (seconds) — the event path normally fires sooner. */
+  pollIntervalSeconds: number;
 }
 
 export class AutoExecutor {
@@ -162,6 +166,8 @@ export class AutoExecutor {
       lastSignalKey: this.lastSignalKey,
       lastExecutedAt: this.lastExecutedAt,
       lastSkippedReason: this.lastSkippedReason,
+      dedupWindowSeconds: DEDUP_WINDOW_MS / 1000,
+      pollIntervalSeconds: POLL_INTERVAL_MS / 1000,
     };
   }
 

@@ -47,7 +47,9 @@ const EXECUTION_HISTORY_PATH = path.join(REALTIME_DIR, 'execution_history.jsonl'
 
 export type UserRiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';
 
-const HISTORY_MAX_ENTRIES = 100;
+// Keep the last 500 entries. 100 was too small — confirmed trades got evicted
+// when BLOCK/failed entries accumulated quickly after them.
+const HISTORY_MAX_ENTRIES = 500;
 
 interface EmergencyStopFile {
   enabled: boolean;
@@ -94,21 +96,30 @@ export function writeEmergencyStop(enabled: boolean, reason: string | null): Eme
 
 export function recordLastExecution(result: ExecutionWorkflowResult): void {
   ensureDir();
-  const slim = {
+  // Shape must match ExecutionWorkflowDto on the frontend — guardian is nested,
+  // not flattened. Mismatched shapes caused last.guardian to be undefined,
+  // crashing DevnetDashboard whenever a last_execution record existed.
+  const record = {
     request_received_at_utc: result.request_received_at_utc,
     request_completed_at_utc: result.request_completed_at_utc,
-    decision: result.guardian.decision,
-    blocked_by: result.guardian.blocked_by,
-    reasons: result.guardian.reasons,
-    sanitized_action: result.guardian.sanitized_action,
+    guardian: {
+      approved: result.guardian.approved,
+      decision: result.guardian.decision,
+      reasons: result.guardian.reasons,
+      blocked_by: result.guardian.blocked_by,
+      sanitized_action: result.guardian.sanitized_action,
+      evaluated_at_utc: result.guardian.evaluated_at_utc,
+    },
     execution: result.execution
       ? {
           status: result.execution.status,
           mode: result.execution.mode,
           signature: result.execution.signature,
+          block_height: result.execution.block_height ?? null,
           asset: result.execution.asset,
           side: result.execution.side,
           amount_sol: result.execution.amount_sol,
+          rpc_url: result.execution.rpc_url ?? null,
           submitted_at_utc: result.execution.submitted_at_utc,
           confirmed_at_utc: result.execution.confirmed_at_utc,
           error: result.execution.error,
@@ -116,7 +127,7 @@ export function recordLastExecution(result: ExecutionWorkflowResult): void {
       : null,
     narration: result.narration,
   };
-  fs.writeFileSync(LAST_EXECUTION_PATH, JSON.stringify(slim, null, 2));
+  fs.writeFileSync(LAST_EXECUTION_PATH, JSON.stringify(record, null, 2));
 
   // Build the compact history entry and append it.
   const entry: ExecutionHistoryEntry = {
@@ -131,6 +142,7 @@ export function recordLastExecution(result: ExecutionWorkflowResult): void {
     asset: result.execution?.asset ?? result.guardian.sanitized_action?.asset ?? null,
     signature: result.execution?.signature ?? null,
     error: result.execution?.error ?? null,
+    signed_by: result.execution?.signed_by ?? null,
   };
   appendExecutionHistory(entry);
   executionEvents.emit('execution_update', entry);

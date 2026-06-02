@@ -22,6 +22,7 @@ import { DevnetBalanceCard } from '../components/DevnetBalanceCard';
 import { EXECUTION_PANEL_REFRESH_MS, EXECUTION_TRADE_DEFAULT_SOL, WALLET_MODE } from '../config';
 import { useSettings } from '../hooks/useSettings';
 import { useAutoExecution } from '../hooks/useAutoExecution';
+import { explorerTxUrl } from '../utils/solanaExplorer';
 
 const card: React.CSSProperties = {
   background: 'var(--bg-panel)',
@@ -39,8 +40,11 @@ const MODE_STYLES: Record<string, { bg: string; fg: string; label: string }> = {
 export function ExecutionPanel() {
   const { publicKey, connected, sendTransaction } = useWallet();
   const { connection } = useConnection();
-  const phantomKey = WALLET_MODE === 'phantom' ? (publicKey?.toBase58() ?? null) : null;
-  const walletGated = WALLET_MODE === 'phantom' && !connected;
+  // "Offer both": sign with the connected wallet when one is present; otherwise
+  // the backend keypair signs. Controls are never gated — backend signing is the
+  // default, so connecting a wallet is optional.
+  const phantomKey = connected ? (publicKey?.toBase58() ?? null) : null;
+  const walletGated = false;
   const userSettings = useSettings();
 
   const [status, setStatus] = useState<ExecutionStatusDto | null>(null);
@@ -50,6 +54,7 @@ export function ExecutionPanel() {
     () => userSettings.maxTradeSizeSol ?? EXECUTION_TRADE_DEFAULT_SOL,
   );
   const [busy, setBusy] = useState<'idle' | 'validate' | 'execute' | 'signing'>('idle');
+  const [confirmResume, setConfirmResume] = useState(false);
   const [last, setLast] = useState<ExecutionWorkflowDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const autoExec = useAutoExecution();
@@ -103,7 +108,7 @@ export function ExecutionPanel() {
     setError(null);
     try {
       const mode = status?.execution_mode ?? 'paper';
-      const usePhantomSigning = WALLET_MODE === 'phantom' && connected && mode !== 'paper';
+      const usePhantomSigning = connected && mode !== 'paper';
 
       if (!usePhantomSigning) {
         // Paper mode or non-phantom wallet: backend signs and submits directly.
@@ -181,7 +186,11 @@ export function ExecutionPanel() {
   }
 
   async function onResume() {
-    if (!confirm('Resume execution? Guardian rules still apply.')) return;
+    if (!confirmResume) {
+      setConfirmResume(true);
+      return;
+    }
+    setConfirmResume(false);
     await resumeFromEmergencyStop();
     refresh();
   }
@@ -212,17 +221,28 @@ export function ExecutionPanel() {
           </div>
         )}
 
+        {/* Devnet test-network disclaimer */}
+        {mode === 'devnet' && (
+          <div className="px-4 py-2 text-xs rounded-xl"
+            style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent-bd)', color: 'var(--accent)' }}>
+            <strong>DEVNET</strong> — these are real on-chain transactions on Solana's <strong>test network</strong>.
+            No real money is involved. Mainnet stays disabled unless explicitly enabled in backend config.
+          </div>
+        )}
+
         {/* Phantom wallet connection + balance */}
         <WalletStatusCard />
         <DevnetBalanceCard />
 
-        {/* Wallet gate banner */}
-        {walletGated && (
+        {/* Signer info — backend signs by default; connecting a wallet is optional */}
+        {mode !== 'paper' && (
           <div
-            className="px-4 py-3 text-sm rounded-xl"
-            style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent-bd)', color: 'var(--accent)' }}
+            className="px-4 py-2 text-xs rounded-xl"
+            style={{ background: 'var(--bg-sub)', border: '1px solid var(--border)', color: 'var(--text-3)' }}
           >
-            Connect your wallet above to enable Validate and Execute.
+            {connected
+              ? 'A wallet is connected — manual trades will be signed by you in the wallet popup.'
+              : 'No wallet connected — the backend keypair signs trades by default. Connect a wallet above to sign them yourself instead.'}
           </div>
         )}
 
@@ -330,7 +350,21 @@ export function ExecutionPanel() {
                 style={{ background: 'var(--bg-sub)', color: 'var(--text-2)' }}>
                 <Field label="Status" value={last.execution.status} />
                 <Field label="Mode" value={last.execution.mode} />
-                {last.execution.signature && <Field label="Signature" value={last.execution.signature} mono />}
+                {last.execution.signature && (
+                  <div className="flex items-center justify-between gap-3">
+                    <span style={{ color: 'var(--text-3)' }}>Signature</span>
+                    <a
+                      href={explorerTxUrl(last.execution.signature, last.execution.mode)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-mono hover:underline truncate"
+                      style={{ color: 'var(--accent)' }}
+                      title="View on Solana Explorer"
+                    >
+                      {last.execution.signature.slice(0, 8)}…{last.execution.signature.slice(-8)} ↗
+                    </a>
+                  </div>
+                )}
                 {last.execution.error && <Field label="Error" value={last.execution.error} />}
               </div>
             )}
@@ -485,13 +519,29 @@ export function ExecutionPanel() {
             The flag is persisted across restarts.
           </p>
           {eStop ? (
-            <button
-              onClick={onResume}
-              className="px-4 py-2 rounded-lg text-sm font-semibold"
-              style={{ background: 'var(--green)', color: 'var(--bg-page)' }}
-            >
-              Resume execution
-            </button>
+            <div className="flex items-center gap-3 flex-wrap">
+              <button
+                onClick={onResume}
+                className="px-4 py-2 rounded-lg text-sm font-semibold"
+                style={{ background: confirmResume ? 'var(--red)' : 'var(--green)', color: 'var(--bg-page)' }}
+              >
+                {confirmResume ? 'Confirm resume?' : 'Resume execution'}
+              </button>
+              {confirmResume && (
+                <button
+                  onClick={() => setConfirmResume(false)}
+                  className="px-4 py-2 rounded-lg text-sm"
+                  style={{ background: 'var(--bg-sub)', border: '1px solid var(--border)', color: 'var(--text-2)' }}
+                >
+                  Cancel
+                </button>
+              )}
+              {confirmResume && (
+                <span className="text-xs" style={{ color: 'var(--text-3)' }}>
+                  Guardian rules stay active after resume.
+                </span>
+              )}
+            </div>
           ) : (
             <button
               onClick={onEmergencyStop}

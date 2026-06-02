@@ -9,7 +9,7 @@ import { WebSocketServer } from 'ws';
 import { aiRouter } from './routes/ai.routes';
 import { marketRouter } from './routes/market.routes';
 import { paperTradingRouter } from './routes/paperTrading.routes';
-import { executionRouter } from './routes/execution.routes';
+import { executionRouter, registerAutoExecutor } from './routes/execution.routes';
 import { guardianRouter } from './routes/guardian.routes';
 import { walletRouter } from './routes/wallet.routes';
 import { BinanceWebSocketService } from './services/binanceWebSocket.service';
@@ -48,6 +48,8 @@ signalPoller.start();
 // ── Auto-executor ──────────────────────────────────────────────────────────────
 const autoExecutor = new AutoExecutor(undefined, signalPoller);
 autoExecutor.start();
+// Expose the live AutoExecutor runtime to the /auto-execute/status route.
+registerAutoExecutor(() => autoExecutor.getStatus());
 
 // ── Execution event → WS broadcast ────────────────────────────────────────────
 function broadcastToAll(payload: unknown): void {

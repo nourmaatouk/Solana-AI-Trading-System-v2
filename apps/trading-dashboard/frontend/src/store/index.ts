@@ -14,9 +14,10 @@ export interface ExecutionHistoryEntry {
   asset: string | null;
   signature: string | null;
   error: string | null;
+  signed_by: string | null;
 }
 
-const EXECUTION_HISTORY_MAX = 100 as const;
+const EXECUTION_HISTORY_MAX = 500 as const;
 
 interface TradingStore {
   // Market data
@@ -32,6 +33,12 @@ interface TradingStore {
 
   // AI
   signal: AISignalData | null;
+
+  // Trading mode — chosen on the Get Started screen, persisted across reloads.
+  // 'paper'  = simulated trading, no wallet needed.
+  // 'devnet' = real Solana test-net execution via a connected/backend wallet.
+  mode: 'paper' | 'devnet';
+  setMode: (m: 'paper' | 'devnet') => void;
 
   // Execution history (newest first, max 100)
   executionHistory: ExecutionHistoryEntry[];
@@ -71,6 +78,12 @@ export const useTradingStore = create<TradingStore>((set) => ({
   selectedSymbol: ACTIVE_SYMBOL,
   selectedInterval: ACTIVE_TIMEFRAME,
   signal: null,
+  mode: localStorage.getItem('solvanta_mode') === 'devnet' ? 'devnet' : 'paper',
+  setMode: (m) =>
+    set(() => {
+      localStorage.setItem('solvanta_mode', m);
+      return { mode: m };
+    }),
   executionHistory: [],
   theme: localStorage.getItem('theme') === 'light' ? 'light' : 'dark',
   toggleTheme: () =>

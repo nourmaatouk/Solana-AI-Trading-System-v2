@@ -1,12 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useTradingStore } from '../store';
 import { fetchScheduler } from '../services/api';
-import { ASSISTANT_SENTIMENT_THRESHOLD, CLOCK_TICK_INTERVAL_MS, DASHBOARD_POLL_INTERVAL_MS } from '../config';
+import { ASSISTANT_SENTIMENT_THRESHOLD, DASHBOARD_POLL_INTERVAL_MS } from '../config';
 
 interface SmartAssistantProps {
-  winRate: number | null;
-  activeSignals: number;
-  loading: boolean;
   fusedScore: number | null;
 }
 
@@ -24,30 +21,16 @@ function getMarketSentiment(score: number | null): string {
   return 'neutral';
 }
 
-function formatCountdown(seconds: number): string {
-  if (seconds <= 0) return 'soon';
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}m ${String(s).padStart(2, '0')}s`;
-}
-
-export function SmartAssistant({ winRate, activeSignals, loading, fusedScore }: SmartAssistantProps) {
-  const watchlist = useTradingStore((s) => s.watchlist);
+export function SmartAssistant({ fusedScore }: SmartAssistantProps) {
   const sentiment = getMarketSentiment(fusedScore);
-  const tokenCount = watchlist.length;
 
-  const [nextRunUtc, setNextRunUtc] = useState<string | null>(null);
-  const [nRuns, setNRuns] = useState<number | null>(null);
   const [pipelineStatus, setPipelineStatus] = useState<string | null>(null);
-  const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
 
   // Poll scheduler status on the configured dashboard cadence.
   useEffect(() => {
     const load = async () => {
       try {
         const data = await fetchScheduler();
-        setNextRunUtc(data.next_run_utc as string ?? null);
-        setNRuns(data.n_runs as number ?? null);
         setPipelineStatus(data.last_pipeline_status as string ?? null);
       } catch { /* keep previous values */ }
     };
@@ -55,18 +38,6 @@ export function SmartAssistant({ winRate, activeSignals, loading, fusedScore }: 
     const interval = setInterval(load, DASHBOARD_POLL_INTERVAL_MS);
     return () => clearInterval(interval);
   }, []);
-
-  // Tick countdown on the configured clock cadence.
-  useEffect(() => {
-    if (!nextRunUtc) return;
-    const tick = () => {
-      const diff = Math.max(0, Math.floor((new Date(nextRunUtc).getTime() - Date.now()) / 1000));
-      setSecondsLeft(diff);
-    };
-    tick();
-    const id = setInterval(tick, CLOCK_TICK_INTERVAL_MS);
-    return () => clearInterval(id);
-  }, [nextRunUtc]);
 
   const now = new Date();
   const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' });
@@ -91,10 +62,7 @@ export function SmartAssistant({ winRate, activeSignals, loading, fusedScore }: 
             {getGreeting()}, Trader 👋
           </h2>
           <p className="text-sm text-purple-100 leading-relaxed">
-            {tokenCount > 0
-              ? <>Our system is tracking <strong>{tokenCount}</strong> tokens with <strong>{activeSignals}</strong> active signal{activeSignals !== 1 ? 's' : ''}. Markets are looking <strong>{sentiment}</strong>.</>
-              : <>Connecting to market data… Markets are looking <strong>{sentiment}</strong>.</>
-            }
+            Markets are looking <strong>{sentiment}</strong>.
           </p>
           {isDegraded && (
             <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-400/20 border border-amber-400/30">
@@ -112,35 +80,6 @@ export function SmartAssistant({ winRate, activeSignals, loading, fusedScore }: 
             <span className="text-xs text-purple-200 hidden sm:inline">· {timeStr}</span>
           </div>
 
-          {/* Mini stats */}
-          <div className="flex gap-2 flex-wrap justify-end">
-            <div className="text-center px-3 py-2 rounded-lg bg-white/15">
-              <div className="text-lg font-bold">{tokenCount || '—'}</div>
-              <div className="text-xs text-purple-200">Watchlist</div>
-            </div>
-            <div className="text-center px-3 py-2 rounded-lg bg-white/15">
-              <div className="text-lg font-bold">{activeSignals}</div>
-              <div className="text-xs text-purple-200">Signals</div>
-            </div>
-            <div className="text-center px-3 py-2 rounded-lg bg-white/15">
-              <div className="text-lg font-bold">
-                {loading ? '—' : winRate !== null ? `${(winRate * 100).toFixed(0)}%` : '—'}
-              </div>
-              <div className="text-xs text-purple-200">Win Rate</div>
-            </div>
-            <div className="text-center px-3 py-2 rounded-lg bg-white/15">
-              <div className="text-base font-bold font-mono">
-                {secondsLeft !== null ? formatCountdown(secondsLeft) : '—'}
-              </div>
-              <div className="text-xs text-purple-200">Next Run</div>
-            </div>
-            {nRuns !== null && (
-              <div className="text-center px-3 py-2 rounded-lg bg-white/15">
-                <div className="text-lg font-bold">{nRuns}</div>
-                <div className="text-xs text-purple-200">Runs</div>
-              </div>
-            )}
-          </div>
         </div>
       </div>
     </div>

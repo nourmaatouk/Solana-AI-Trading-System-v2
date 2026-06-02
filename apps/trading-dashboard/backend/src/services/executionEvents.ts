@@ -17,6 +17,8 @@ export interface ExecutionHistoryEntry {
   asset: string | null;
   signature: string | null;
   error: string | null;
+  /** Base58 public key of the keypair that signed the on-chain transaction. */
+  signed_by: string | null;
 }
 
 class ExecutionEventEmitter extends EventEmitter {}

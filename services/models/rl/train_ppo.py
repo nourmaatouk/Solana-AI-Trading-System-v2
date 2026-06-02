@@ -41,6 +41,7 @@ from config import (
     FUSION_WEIGHT_CLASSIFICATION,
     FUSION_WEIGHT_SPOOFING,
     FUSION_GNN_STRESS_PENALTY,
+    MIN_EVAL_ROUND_TRIPS,
     MODEL_DIR,
     PIPELINE_SIGNAL_DIM,
     PLOTS_DIR,
@@ -70,7 +71,7 @@ from config import (
 from environment import TradingEnv
 
 from stable_baselines3 import PPO
-from stable_baselines3.common.callbacks import EvalCallback
+from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.monitor import Monitor
 
 
@@ -243,6 +244,79 @@ def evaluate_agent(
     }
 
 
+class TradingEvalCallback(BaseCallback):
+    """Saves the best checkpoint by validation **Sharpe**, gated on real
+    participation and survival.
+
+    A stock ``EvalCallback`` selects by mean episode *reward*. Under the
+    absolute-return reward the always-flat policy scores exactly 0 and beats
+    every checkpoint that traded at a net loss, so it reliably picks the
+    degenerate do-nothing model. This callback instead:
+
+      • runs one deterministic validation episode every ``eval_freq`` steps,
+      • disqualifies checkpoints that made < ``min_round_trips`` valid round-trips
+        (kills the do-nothing policy) or blew up (hit the equity floor),
+      • among the survivors, keeps the one with the highest Sharpe.
+
+    Falls back to no save if nothing ever qualifies; the caller then persists the
+    final policy instead.
+    """
+
+    def __init__(self, val_features, val_prices, val_sig, eval_freq,
+                 save_path, min_round_trips=MIN_EVAL_ROUND_TRIPS, verbose=0):
+        super().__init__(verbose)
+        self._vf, self._vp, self._vs = val_features, val_prices, val_sig
+        self._eval_freq = eval_freq
+        self._save_path = str(save_path)
+        self._min_rt = min_round_trips
+        self.best_sharpe = -np.inf
+        self.saved_any = False
+
+    def _rollout(self) -> dict:
+        env = TradingEnv(self._vf, self._vp, self._vs)
+        obs, _ = env.reset()
+        equity = [env._equity]
+        round_trips = 0
+        prev_pos = 0.0
+        steps = 0
+        while True:
+            action, _ = self.model.predict(obs, deterministic=True)
+            obs, _r, terminated, truncated, info = env.step(int(action))
+            equity.append(info["equity"])
+            if int(action) == 2 and prev_pos == 1.0:   # valid exit = one round-trip
+                round_trips += 1
+            prev_pos = info["position"]
+            steps += 1
+            if terminated or truncated:
+                break
+        equity = np.array(equity)
+        log_rets = np.diff(np.log(np.maximum(equity, 1e-10)))
+        return {
+            "sharpe": _sharpe(log_rets),
+            "round_trips": round_trips,
+            "blew_up": steps < len(self._vf) - 1,
+        }
+
+    def _on_step(self) -> bool:
+        if self.n_calls % self._eval_freq != 0:
+            return True
+        m = self._rollout()
+        eligible = m["round_trips"] >= self._min_rt and not m["blew_up"]
+        if eligible and m["sharpe"] > self.best_sharpe:
+            self.best_sharpe = m["sharpe"]
+            self.model.save(self._save_path)
+            self.saved_any = True
+            if self.verbose:
+                print(f"    [eval @ {self.num_timesteps:,}] new best "
+                      f"sharpe={m['sharpe']:.3f}  round_trips={m['round_trips']} → saved")
+        elif self.verbose:
+            why = "do-nothing/under-min" if m["round_trips"] < self._min_rt else (
+                  "blew up" if m["blew_up"] else "sharpe not improved")
+            print(f"    [eval @ {self.num_timesteps:,}] skip ({why}); "
+                  f"sharpe={m['sharpe']:.3f} round_trips={m['round_trips']}")
+        return True
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def _train_run(
@@ -266,16 +340,15 @@ def _train_run(
     print(f"  Output   : {model_path.name}")
 
     train_env = Monitor(TradingEnv(train_features, train_prices, train_sig, random_start=True))
-    val_env   = Monitor(TradingEnv(val_features,   val_prices,   val_sig))
 
-    eval_callback = EvalCallback(
-        val_env,
-        best_model_save_path=str(MODEL_DIR),
-        log_path=str(MODEL_DIR),
+    best_ckpt_path = MODEL_DIR / "best_model.zip"
+    if best_ckpt_path.exists():
+        best_ckpt_path.unlink()   # stale best from a previous run must not leak in
+    eval_callback = TradingEvalCallback(
+        val_features, val_prices, val_sig,
         eval_freq=max(PPO_N_STEPS, PPO_EVAL_FREQ_MIN),
-        n_eval_episodes=1,
-        deterministic=True,
-        verbose=0,
+        save_path=best_ckpt_path,
+        verbose=1,
     )
 
     agent = PPO(
@@ -296,12 +369,15 @@ def _train_run(
     agent.learn(total_timesteps=total_timesteps, callback=eval_callback)
 
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
-    best_path = MODEL_DIR / "best_model.zip"
-    if best_path.exists():
-        best_path.rename(model_path)
+    if eval_callback.saved_any and best_ckpt_path.exists():
+        best_ckpt_path.rename(model_path)
+        print(f"\n  Best checkpoint (val sharpe={eval_callback.best_sharpe:.3f}) → {model_path.name}")
     else:
+        # No checkpoint ever cleared the participation/no-blowup bar — persist the
+        # final policy and say so loudly (the run did not find a tradeable model).
         agent.save(str(model_path))
-    print(f"\n  Model saved → {model_path.name}")
+        print(f"\n  ⚠ No checkpoint met min round-trips / no-blowup gate; "
+              f"saved FINAL policy → {model_path.name}")
 
     # Quick validation metrics
     trained = PPO.load(str(model_path))

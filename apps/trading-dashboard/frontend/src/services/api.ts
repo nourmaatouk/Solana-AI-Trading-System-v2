@@ -36,6 +36,27 @@ export const fetchSpoofing = (): Promise<{ confidence: number; severity: string;
 export const fetchSentiment = (): Promise<{ label: string; score: number | null; event_type: string | null; high_impact: boolean }> =>
   get('/ai/sentiment');
 
+export interface NewsArticle {
+  timestamp: string | null;
+  source: string | null;
+  feed_source: string | null;   // GDELT | RSS
+  title: string | null;
+  url: string | null;
+  sentiment_label: string | null;
+  sentiment_score: number | null;
+  confidence: number | null;
+  relevance_score: number | null;
+  event_type: string | null;
+  high_impact_event: boolean;
+}
+export interface NewsResponse {
+  articles: NewsArticle[];
+  count: number;
+  source_file_present: boolean;
+}
+export const fetchNews = (limit = 20): Promise<NewsResponse> =>
+  get<NewsResponse>(`/ai/news?limit=${limit}`);
+
 export const fetchFusion = (): Promise<AISignalData> =>
   get<AISignalData>('/ai/fusion');
 

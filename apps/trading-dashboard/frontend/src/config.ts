@@ -126,8 +126,22 @@ export const WS_RECONNECT_MAX_MS = envNumber('VITE_WS_RECONNECT_MAX_MS', 30_000)
 /** ExecutionPanel auto-refresh interval (ms) */
 export const EXECUTION_PANEL_REFRESH_MS = envNumber('VITE_EXECUTION_PANEL_REFRESH_MS', 10_000);
 
-/** Default amount (SOL) prefilled in the execution panel */
+/** Default amount (SOL) prefilled in the execution panel and used as the
+ *  default maxTradeSizeSol in Settings. Must match EXECUTION_TRADE_DEFAULT_SOL
+ *  in the backend .env (default 0.01). */
 export const EXECUTION_TRADE_DEFAULT_SOL = envNumber('VITE_EXECUTION_TRADE_DEFAULT_SOL', 0.01);
+
+/** Hard cap (SOL) shown in the Settings max-trade-size input.
+ *  Must be ≤ MAX_TRADE_SIZE_SOL in the Guardian's .env (default 0.1). */
+export const MAX_TRADE_SIZE_SOL = envNumber('VITE_MAX_TRADE_SIZE_SOL', 0.1);
+
+/** Position-size caps shown next to each risk level in the Trade page.
+ *  Keys must match RiskLevel; values are display strings only (UI label). */
+export const RISK_LEVEL_CAPS: Record<'LOW' | 'MEDIUM' | 'HIGH', string> = {
+  LOW:    envString('VITE_RISK_CAP_LOW',    '≤ 33%'),
+  MEDIUM: envString('VITE_RISK_CAP_MEDIUM', '≤ 66%'),
+  HIGH:   envString('VITE_RISK_CAP_HIGH',   '≤ 100%'),
+};
 
 // ── Wallet / Solana ──────────────────────────────────────────────────────────
 

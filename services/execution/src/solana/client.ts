@@ -29,6 +29,26 @@ export interface BuildSolanaClientOptions {
   env?: ExecutionEnv;
 }
 
+/**
+ * Derive the signer's base58 public key from the base58 secret key — the same
+ * path the executors use (bs58.decode → Keypair.fromSecretKey). This avoids
+ * coupling to SolanaAgentKit's internal wallet shape, which differs across SAK
+ * versions (agent.wallet.publicKey vs agent.wallet_address vs …).
+ */
+function derivePublicKey(secretBase58: string | undefined): string | null {
+  if (!secretBase58) return null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const web3 = require('@solana/web3.js');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    let bs58 = require('bs58');
+    if (bs58.default) bs58 = bs58.default;
+    return web3.Keypair.fromSecretKey(bs58.decode(secretBase58)).publicKey.toBase58();
+  } catch {
+    return null;
+  }
+}
+
 export interface SolanaClientHandle {
   /** Lazily-loaded SAK instance. Null in paper mode or when SDK absent. */
   agent: ISolanaAgentKit | null;
@@ -80,7 +100,9 @@ export function buildSolanaClient(opts: BuildSolanaClientOptions = {}): SolanaCl
     agent,
     cluster: env.SOLANA_CLUSTER,
     rpcUrl: env.SOLANA_RPC_URL,
-    publicKey: agent ? agent.wallet.publicKey.toBase58() : env.SOLANA_PUBLIC_KEY ?? null,
+    publicKey: agent
+      ? (derivePublicKey(env.SOLANA_PRIVATE_KEY) ?? env.SOLANA_PUBLIC_KEY ?? null)
+      : env.SOLANA_PUBLIC_KEY ?? null,
     signingCapable: agent !== null,
   };
 }

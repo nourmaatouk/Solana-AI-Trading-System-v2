@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { EXECUTION_TRADE_DEFAULT_SOL } from '../config';
 
 export type TradingMode = 'Manual' | 'Semi-Auto' | 'Auto';
 
@@ -23,7 +24,7 @@ export const SETTINGS_DEFAULTS: Settings = {
   showSpoofingAlerts: true,
   riskLevel: 'MEDIUM',
   tradingMode: 'Manual',
-  maxTradeSizeSol: 0.01,
+  maxTradeSizeSol: EXECUTION_TRADE_DEFAULT_SOL,
 };
 
 export function loadSettings(): Settings {

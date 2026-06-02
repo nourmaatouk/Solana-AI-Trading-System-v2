@@ -185,6 +185,13 @@ export interface AutoExecuteStatusDto {
   enabled: boolean;
   user_risk_level: 'LOW' | 'MEDIUM' | 'HIGH' | null;
   max_trade_size_sol: number | null;
+  // Live runtime fields (null until the AutoExecutor registers at startup).
+  wallet_mode: string | null;
+  last_signal_key: string | null;
+  last_executed_at: string | null;
+  last_skipped_reason: string | null;
+  dedup_window_seconds: number | null;
+  poll_interval_seconds: number | null;
 }
 
 export const fetchAutoExecuteStatus = () =>
