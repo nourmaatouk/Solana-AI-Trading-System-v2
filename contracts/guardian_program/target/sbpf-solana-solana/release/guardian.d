@@ -1,1 +1,0 @@
-/home/nourmaatouk/Solana-AI-Trading-System/contracts/guardian_program/target/sbpf-solana-solana/release/guardian.so: /home/nourmaatouk/Solana-AI-Trading-System/contracts/guardian_program/programs/guardian/src/lib.rs

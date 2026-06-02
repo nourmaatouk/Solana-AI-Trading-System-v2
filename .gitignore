@@ -104,3 +104,7 @@ desktop.ini
 **/.pytest_cache/
 **/.coverage
 **/htmlcov/
+
+# Rust build artifacts
+target/
+**/target/
