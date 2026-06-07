@@ -2,20 +2,13 @@ import { useEffect, useState, useMemo } from 'react';
 import { fetchBacktest, fetchWalkForward, fetchHistory } from '../services/api';
 import {
   ACTIVE_SYMBOL,
-  ACTIVE_TIMEFRAME,
   BACKTEST_ACCURACY_GOOD_THRESHOLD,
   BACKTEST_AUC_GOOD_THRESHOLD,
   BACKTEST_MCC_GOOD_THRESHOLD,
   BACKTEST_MODEL_LABEL,
   BACKTEST_PRECISION_GOOD_THRESHOLD,
   DEFAULT_CONFIDENCE_GATE,
-  PAPER_TRADING_FEE_RATE,
-  PURGE_GAP_BARS,
-  PURGE_GAP_LABEL,
   RANDOM_BASELINE_AUC,
-  TARGET_STOP_LOSS,
-  TARGET_TAKE_PROFIT,
-  WALK_FORWARD_FOLDS,
 } from '../config';
 import { formatMarketPair, parseMarketSymbol } from '../utils/symbol';
 
@@ -165,12 +158,8 @@ const card = { background: 'var(--bg-panel)', border: '1px solid var(--border)' 
 export function BacktestPage() {
   const marketPair = formatMarketPair(ACTIVE_SYMBOL);
   const { base } = parseMarketSymbol(ACTIVE_SYMBOL);
-  const paperFeePct = PAPER_TRADING_FEE_RATE * 100;
-  const takeProfitPct = TARGET_TAKE_PROFIT * 100;
-  const stopLossPct = TARGET_STOP_LOSS * 100;
   const [bt, setBt] = useState<BacktestData | null>(null);
   const [wf, setWf] = useState<WalkForwardData | null>(null);
-  const foldCount = wf?.fold_results.length ?? WALK_FORWARD_FOLDS;
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -434,19 +423,6 @@ export function BacktestPage() {
             </div>
           </div>
         )}
-
-        {/* ── Methodology note ─────────────────────────────────────────── */}
-        <div className="rounded-xl p-5" style={card}>
-          <div className="font-semibold text-sm mb-3" style={{ color: 'var(--text-1)' }}>Methodology</div>
-          <div className="text-xs space-y-1.5 leading-relaxed" style={{ color: 'var(--text-2)' }}>
-            <div>• <strong>Walk-forward validation:</strong> {foldCount} folds with expanding training window. Each fold tests on strictly future data the model never saw during training.</div>
-            <div>• <strong>Purge gap:</strong> {PURGE_GAP_BARS} bars (= {PURGE_GAP_LABEL}) gap between train/val and val/test boundaries to prevent label leakage from forward-looking targets.</div>
-            <div>• <strong>Confidence gate:</strong> Only trades where P(UP) ≥ {(wf?.confidence_gate ?? DEFAULT_CONFIDENCE_GATE).toFixed(2)} or P(DOWN) ≤ {(1 - (wf?.confidence_gate ?? DEFAULT_CONFIDENCE_GATE)).toFixed(2)} are counted. This filters out low-conviction signals that degrade real-world performance.</div>
-            <div>• <strong>Paper trading fees:</strong> {paperFeePct.toFixed(2)}% round-trip per trade deducted from all P&amp;L calculations.</div>
-            <div>• <strong>Target:</strong> Triple-barrier — +{takeProfitPct.toFixed(1)}% take-profit vs −{stopLossPct.toFixed(1)}% stop-loss vs end-of-horizon exit.</div>
-            <div>• <strong>Live paper trading:</strong> Runs on the configured {ACTIVE_TIMEFRAME} cadence with real-time Binance data via the scheduler daemon.</div>
-          </div>
-        </div>
 
       </div>
     </div>

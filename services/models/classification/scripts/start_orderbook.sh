@@ -21,7 +21,10 @@ PIDFILE="/tmp/sol_orderbook.pid"
 
 mkdir -p "$LOG_DIR"
 
-# Check if already running
+# Check if already running — by PID file first, then by process pattern so a
+# collector started another way (e.g. manually) is never duplicated. Two
+# concurrent collectors race on the CSV and corrupt it, which is exactly what
+# silently froze the pipeline before.
 if [ -f "$PIDFILE" ]; then
     OLD_PID=$(cat "$PIDFILE")
     if kill -0 "$OLD_PID" 2>/dev/null; then
@@ -29,6 +32,13 @@ if [ -f "$PIDFILE" ]; then
         exit 0
     fi
     rm -f "$PIDFILE"
+fi
+
+if pgrep -f "realtime_orderbook_collector.py" >/dev/null 2>&1; then
+    RUNNING_PID=$(pgrep -f "realtime_orderbook_collector.py" | head -1)
+    echo "Orderbook collector already running (PID $RUNNING_PID, no pidfile) — adopting it."
+    echo "$RUNNING_PID" > "$PIDFILE"
+    exit 0
 fi
 
 if [ "${1:-}" = "--fg" ]; then

@@ -73,7 +73,10 @@ export class MainnetExecutor implements ITransactionExecutor {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const web3 = require('@solana/web3.js');
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const bs58 = require('bs58');
+    let bs58 = require('bs58');
+    // bs58 v6 is ESM-first: under CommonJS interop the decode() helpers live on
+    // the .default export. Normalise so bs58.decode is always callable.
+    if (bs58.default) bs58 = bs58.default;
     const connection = new web3.Connection(this.handle.rpcUrl, 'confirmed');
     const secret = bs58.decode(env.SOLANA_PRIVATE_KEY!);
     const keypair = web3.Keypair.fromSecretKey(secret);

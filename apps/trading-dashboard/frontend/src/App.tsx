@@ -1,6 +1,8 @@
 import { BrowserRouter, Routes, Route, Outlet, Navigate, useLocation } from 'react-router-dom';
 import { useEffect } from 'react';
+import { useWallet } from '@solana/wallet-adapter-react';
 import { useMarketSocket } from './hooks/useMarketSocket';
+import { useSystemWallet } from './hooks/useSystemWallet';
 import { useTradingStore } from './store';
 import { enableAutoExecute, disableAutoExecute } from './services/executionApi';
 import { loadSettings, SETTINGS_KEY } from './hooks/useSettings';
@@ -15,6 +17,7 @@ import { PaperTrading } from './pages/PaperTrading';
 import { SystemStatus } from './pages/SystemStatus';
 import { SettingsPage } from './pages/SettingsPage';
 import { BacktestPage } from './pages/BacktestPage';
+import { Correlation } from './pages/Correlation';
 import { ExecutionPanel } from './pages/ExecutionPanel';
 import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
@@ -31,11 +34,29 @@ function AppLayout() {
   const { pathname } = useLocation();
   const isMarket = pathname === '/market';
   const theme = useTradingStore((s) => s.theme);
+  const mode = useTradingStore((s) => s.mode);
+  const setMode = useTradingStore((s) => s.setMode);
+  const { connected: phantomConnected } = useWallet();
+  const { connected: systemConnected } = useSystemWallet();
+  // Devnet is accessible when EITHER the Phantom browser wallet OR the backend
+  // system wallet (Dev Wallet button) is connected.
+  const canAccessDevnet = phantomConnected || systemConnected;
 
   // Keep data-theme in sync with store (also applied on toggle; this covers initial load)
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
+
+  // Any wallet connected → upgrade to devnet automatically.
+  useEffect(() => {
+    if (canAccessDevnet && mode === 'paper') setMode('devnet');
+  }, [canAccessDevnet, mode, setMode]);
+
+  // All wallets disconnected → fall back to paper immediately.
+  // Also fires on initial load when localStorage held a stale 'devnet' value.
+  useEffect(() => {
+    if (!canAccessDevnet && mode === 'devnet') setMode('paper');
+  }, [canAccessDevnet, mode, setMode]);
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg-page)' }}>
@@ -97,6 +118,7 @@ function App() {
           <Route path="/status" element={<SystemStatus />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/backtest" element={<BacktestPage />} />
+          <Route path="/correlation" element={<Correlation />} />
           <Route path="/execution" element={mode === 'paper' ? <Navigate to="/trade" replace /> : <ExecutionPanel />} />
         </Route>
       </Routes>

@@ -173,10 +173,17 @@ class OrderBookCollector:
 
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Merge with existing CSV, deduplicate on timestamp, keep last MAX_ROWS_KEPT
+        # Merge with existing CSV, deduplicate on timestamp, keep last MAX_ROWS_KEPT.
+        # A corrupt/half-written CSV (e.g. interrupted flush, concurrent writer)
+        # must never crash the collector — fall back to a fresh file instead.
         if self.output_path.exists():
-            existing = pd.read_csv(self.output_path)
-            combined = pd.concat([existing, new_rows], ignore_index=True)
+            try:
+                existing = pd.read_csv(self.output_path)
+                combined = pd.concat([existing, new_rows], ignore_index=True)
+            except Exception as exc:
+                print(f"  WARN: could not read {self.output_path.name} "
+                      f"({type(exc).__name__}: {exc}); rebuilding from new rows")
+                combined = new_rows
         else:
             combined = new_rows
 

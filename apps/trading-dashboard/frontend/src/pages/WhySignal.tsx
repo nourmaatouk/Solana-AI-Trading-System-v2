@@ -112,11 +112,6 @@ export function WhySignal() {
               )}
             </div>
           </div>
-          {signal.reason && (
-            <div className="rounded-lg p-3 text-sm leading-relaxed" style={{ background: 'var(--bg-sub)', color: 'var(--text-2)' }}>
-              {signal.reason}
-            </div>
-          )}
         </div>
 
         {/* XGBoost */}

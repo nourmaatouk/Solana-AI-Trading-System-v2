@@ -110,6 +110,23 @@ executionRouter.post('/validate', async (req, res) => {
 executionRouter.post('/execute', async (req, res) => {
   const parsed = parseRequest(req, res);
   if (!parsed) return;
+
+  // Access-control: devnet execution requires a connected wallet public key.
+  // The Guardian also enforces this (rule #12 for phantom mode), but rejecting
+  // here gives a clear 401 before any execution logic is touched.
+  const env = loadEnv();
+  if (
+    parsed.execution_mode === 'devnet' &&
+    env.WALLET_MODE === 'phantom' &&
+    !parsed.phantom_public_key
+  ) {
+    res.status(401).json({
+      error: 'wallet_required',
+      detail: 'Devnet execution requires a connected Solana wallet. Connect your wallet and retry.',
+    });
+    return;
+  }
+
   try {
     const requestWithDaily = { ...parsed, daily_executed_sol: readDailyVolume() };
     const result = await workflow.execute(requestWithDaily);

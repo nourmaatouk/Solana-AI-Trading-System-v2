@@ -78,7 +78,11 @@ export const useTradingStore = create<TradingStore>((set) => ({
   selectedSymbol: ACTIVE_SYMBOL,
   selectedInterval: ACTIVE_TIMEFRAME,
   signal: null,
-  mode: localStorage.getItem('solvanta_mode') === 'devnet' ? 'devnet' : 'paper',
+  // Always start in paper mode. The wallet adapter clears its stored wallet name
+  // on every page load (WalletProvider.tsx), so no wallet is ever auto-connected.
+  // Any previously persisted 'devnet' value is therefore invalid on startup.
+  // App.tsx upgrades back to devnet automatically once the wallet reconnects.
+  mode: 'paper',
   setMode: (m) =>
     set(() => {
       localStorage.setItem('solvanta_mode', m);

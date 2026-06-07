@@ -43,6 +43,13 @@ OUTPUT_PATH  = BASE_DIR / "data" / "realtime" / "latest_sentiment_15m.csv"
 CACHE_PATH   = BASE_DIR / "data" / "realtime" / "processed_urls.txt"
 BUFFER_PATH  = BASE_DIR / "data" / "realtime" / "sentiment_buffer.csv"
 
+# Per-article feed that the dashboard /news endpoint serves. The realtime fetcher
+# is the only process that runs every 15 min, so it must keep this file fresh —
+# otherwise the "Sentiment & News" page shows whatever the offline NLP pipeline
+# last wrote (which can be weeks old).
+NEWS_ARTICLES_PATH = NLP_DIR / "data" / "processed" / "processed_articles.csv"
+MAX_NEWS_ARTICLES  = 300   # rolling cap so the file never grows unbounded
+
 REQUIRED_COLUMNS = [
     "timestamp", "sentiment_mean", "sentiment_std", "news_volume",
     "positive_ratio", "negative_ratio", "neutral_ratio",
@@ -210,6 +217,45 @@ def _from_buffer_or_zero(reason: str) -> pd.DataFrame:
     return normalize_layer2_bucket_frame(_aggregate_buffer(buf))
 
 
+def _update_news_articles(df_processed: pd.DataFrame) -> None:
+    """Append freshly FinBERT-scored articles to the dashboard news feed.
+
+    The /news endpoint reads NEWS_ARTICLES_PATH (per-article rows with real
+    publish timestamps). We merge the new rows in, deduplicate by URL, sort by
+    time, and keep only the most recent MAX_NEWS_ARTICLES so the file stays
+    current and bounded. Must be called BEFORE timestamps are overwritten for
+    15-minute bucketing, so real publish times are preserved.
+    """
+    if df_processed is None or df_processed.empty:
+        return
+    try:
+        from src.storage.csv_writer import save_processed_articles
+
+        combined = df_processed.copy()
+        if NEWS_ARTICLES_PATH.exists():
+            try:
+                existing = pd.read_csv(NEWS_ARTICLES_PATH)
+                if not existing.empty:
+                    combined = pd.concat([existing, combined], ignore_index=True)
+            except Exception as exc:
+                print(f"  WARN: unreadable {NEWS_ARTICLES_PATH.name} ({exc}); rebuilding")
+
+        if "url" in combined.columns:
+            combined = combined.drop_duplicates(subset=["url"], keep="last")
+        if "timestamp" in combined.columns:
+            combined["timestamp"] = pd.to_datetime(
+                combined["timestamp"], errors="coerce", utc=True
+            )
+            combined = combined.sort_values("timestamp")
+        combined = combined.tail(MAX_NEWS_ARTICLES).reset_index(drop=True)
+
+        save_processed_articles(combined, str(NEWS_ARTICLES_PATH))
+        print(f"  News feed updated: {len(combined)} articles → {NEWS_ARTICLES_PATH.name}")
+    except Exception as exc:
+        # Never let the news-feed write break the sentiment pipeline.
+        print(f"  WARN: could not update news feed: {exc}")
+
+
 def main():
     print("=" * 60)
     print("Real-time Sentiment Fetcher Starting")
@@ -261,6 +307,10 @@ def main():
                 print("No relevant articles after filtering.")
                 df_final = _from_buffer_or_zero("No relevant articles.")
             else:
+                # Persist article-level rows (with real publish times) to the
+                # dashboard news feed BEFORE timestamps are rewritten below.
+                _update_news_articles(df_processed)
+
                 # 3. Stamp all articles with the current 15-min bucket so they
                 # aggregate into one row (not split by their RSS publish times).
                 print("Aggregating sentiment into 15-minute buckets...")

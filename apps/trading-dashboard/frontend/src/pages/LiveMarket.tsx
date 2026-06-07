@@ -5,8 +5,6 @@ import { RecentTrades } from '../components/RecentTrades';
 import { Watchlist } from '../components/Watchlist';
 import { AISignalPanel } from '../components/AISignalPanel';
 import { SpoofingPanel } from '../components/SpoofingPanel';
-import { TradingControls } from '../components/TradingControls';
-
 export function LiveMarket() {
   return (
     <div className="flex flex-col h-full min-h-0" style={{ background: 'var(--bg-page)' }}>
@@ -47,7 +45,6 @@ export function LiveMarket() {
         </div>
       </div>
 
-      <TradingControls />
     </div>
   );
 }

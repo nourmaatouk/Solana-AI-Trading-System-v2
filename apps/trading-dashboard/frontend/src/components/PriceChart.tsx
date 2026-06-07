@@ -99,6 +99,15 @@ export function PriceChart() {
     volumeRef.current = volumeSeries;
     maSeriesRefs.current = maSeries;
 
+    // A freshly (re)created chart holds no data. Reset the snapshot-tracking
+    // refs so the next klines render is treated as a full setData + fitContent,
+    // not a single-candle update. Without this, navigating away and back (or
+    // React StrictMode's remount) leaves the new chart showing only the latest
+    // candle, zoomed in, until a manual page refresh.
+    prevLenRef.current = 0;
+    prevFirstTimeRef.current = 0;
+    hasFittedRef.current = false;
+
     const ro = new ResizeObserver(() => {
       if (containerRef.current) {
         chart.applyOptions({
@@ -125,35 +134,43 @@ export function PriceChart() {
       return;
     }
 
+    // lightweight-charts requires strictly ascending, unique timestamps and
+    // throws (crashing the whole page) on a duplicate or out-of-order candle.
+    // The backend WS can occasionally deliver one, so normalise here: dedupe by
+    // time (keep the latest version of each candle) and sort ascending.
+    const byTime = new Map<number, (typeof klines)[number]>();
+    for (const k of klines) byTime.set(k.time, k);
+    const sorted = Array.from(byTime.values()).sort((a, b) => a.time - b.time);
+
     const prev = prevLenRef.current;
-    const curr = klines.length;
-    const currFirstTime = klines[0]?.time ?? 0;
+    const curr = sorted.length;
+    const currFirstTime = sorted[0]?.time ?? 0;
     const isSnapshot = curr - prev > 1 || prev === 0 || currFirstTime !== prevFirstTimeRef.current;
     prevLenRef.current = curr;
     prevFirstTimeRef.current = currFirstTime;
 
-    const last = klines[curr - 1];
+    const last = sorted[curr - 1];
 
     if (isSnapshot) {
-      const candleData: CandlestickData[] = klines.map((k) => ({
+      const candleData: CandlestickData[] = sorted.map((k) => ({
         time: localTime(k.time),
         open: parseFloat(k.open),
         high: parseFloat(k.high),
         low: parseFloat(k.low),
         close: parseFloat(k.close),
       }));
-      const volumeData: HistogramData[] = klines.map((k) => ({
+      const volumeData: HistogramData[] = sorted.map((k) => ({
         time: localTime(k.time),
         value: parseFloat(k.volume),
         color: parseFloat(k.close) >= parseFloat(k.open) ? '#0ecb8140' : '#f6465d40',
       }));
-      const closes = klines.map((k) => parseFloat(k.close));
+      const closes = sorted.map((k) => parseFloat(k.close));
 
       candleRef.current.setData(candleData);
       volumeRef.current.setData(volumeData);
       MOVING_AVERAGES.forEach(({ period }, index) => {
         const ma = calcSMA(closes, period);
-        const maData: LineData[] = klines
+        const maData: LineData[] = sorted
           .map((k, i) => ({ time: localTime(k.time), value: ma[i] }))
           .filter((d): d is LineData => d.value !== null);
         maSeriesRefs.current[index]?.setData(maData);
@@ -176,7 +193,7 @@ export function PriceChart() {
         value: parseFloat(last.volume),
         color: parseFloat(last.close) >= parseFloat(last.open) ? '#0ecb8140' : '#f6465d40',
       });
-      const closes = klines.map((k) => parseFloat(k.close));
+      const closes = sorted.map((k) => parseFloat(k.close));
       const i = curr - 1;
       MOVING_AVERAGES.forEach(({ period }, index) => {
         const start = i - period + 1;

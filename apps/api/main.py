@@ -758,6 +758,102 @@ def trigger_retrain() -> dict[str, Any]:
     }
 
 
+@app.get("/correlation", tags=["trading"])
+def get_correlation(candles: int = 60) -> dict[str, Any]:
+    """
+    BTC/SOL correlation data for the Correlation page.
+
+    Returns:
+    - btc_features: the 5 co-features currently fed to the XGBoost classifier
+    - btc_candles: last `candles` rows of BTC 15m OHLCV
+    - sol_candles: last `candles` rows of SOL 15m OHLCV
+    - rolling_correlation: Pearson r between BTC and SOL close returns (last `candles` rows)
+    """
+    import csv as _csv_mod
+
+    btc_path = REALTIME_DIR / "latest_btc_15m.csv"
+    sol_path = REALTIME_DIR / "latest_sol_15m.csv"
+    feat_path = REALTIME_DIR / "latest_features_with_sentiment.csv"
+
+    def _read_candles(path: Path, n: int) -> list[dict[str, Any]]:
+        if not path.exists():
+            return []
+        try:
+            with path.open() as f:
+                rows = list(_csv_mod.DictReader(f))
+            out = []
+            for row in rows[-n:]:
+                try:
+                    out.append({
+                        "timestamp": int(row["timestamp"]),
+                        "open":   float(row["open"]),
+                        "high":   float(row["high"]),
+                        "low":    float(row["low"]),
+                        "close":  float(row["close"]),
+                        "volume": float(row["volume"]),
+                    })
+                except (ValueError, KeyError):
+                    continue
+            return out
+        except Exception:
+            return []
+
+    btc_candles = _read_candles(btc_path, candles)
+    sol_candles = _read_candles(sol_path, candles)
+
+    # BTC co-features from the latest feature row
+    btc_features: dict[str, Any] = {}
+    if feat_path.exists():
+        try:
+            with feat_path.open() as f:
+                rows = list(_csv_mod.DictReader(f))
+            if rows:
+                last = rows[-1]
+                for col in ("btc_return_4", "btc_return_16", "btc_vol_12", "btc_vs_sma20", "btc_rsi_14"):
+                    try:
+                        btc_features[col] = float(last[col]) if last.get(col) not in (None, "", "nan") else None
+                    except (ValueError, KeyError):
+                        btc_features[col] = None
+                btc_features["feature_timestamp"] = last.get("timestamp")
+        except Exception:
+            pass
+
+    # Rolling Pearson correlation between BTC and SOL close returns
+    rolling_correlation: float | None = None
+    try:
+        if len(btc_candles) >= 5 and len(sol_candles) >= 5:
+            # align on timestamp
+            btc_map = {c["timestamp"]: c["close"] for c in btc_candles}
+            sol_map = {c["timestamp"]: c["close"] for c in sol_candles}
+            common = sorted(set(btc_map) & set(sol_map))
+            if len(common) >= 5:
+                btc_c = [btc_map[t] for t in common]
+                sol_c = [sol_map[t] for t in common]
+                # returns
+                btc_r = [btc_c[i] / btc_c[i - 1] - 1 for i in range(1, len(btc_c))]
+                sol_r = [sol_c[i] / sol_c[i - 1] - 1 for i in range(1, len(sol_c))]
+                n = len(btc_r)
+                mean_b = sum(btc_r) / n
+                mean_s = sum(sol_r) / n
+                cov = sum((btc_r[i] - mean_b) * (sol_r[i] - mean_s) for i in range(n)) / n
+                std_b = (sum((x - mean_b) ** 2 for x in btc_r) / n) ** 0.5
+                std_s = (sum((x - mean_s) ** 2 for x in sol_r) / n) ** 0.5
+                if std_b > 0 and std_s > 0:
+                    rolling_correlation = round(cov / (std_b * std_s), 4)
+    except Exception:
+        pass
+
+    return {
+        "status": "ok",
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "btc_features": btc_features,
+        "btc_candles": btc_candles,
+        "sol_candles": sol_candles,
+        "rolling_correlation": rolling_correlation,
+        "candles_requested": candles,
+    }
+
+
 # ── Dashboard (static files) — must be registered after all API routes ────────
 # Served at /app/  (built with Vite base: '/app/')
 # If the dist folder does not exist, the dashboard routes are simply skipped.

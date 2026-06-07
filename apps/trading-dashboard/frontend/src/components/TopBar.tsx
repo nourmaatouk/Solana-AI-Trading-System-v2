@@ -1,9 +1,70 @@
 import { useEffect, useState, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useTradingStore } from '../store';
 import type { WatchlistItem } from '../types';
 import { CLOCK_TICK_INTERVAL_MS, NOTIFICATION_HISTORY_LIMIT, WATCHLIST_SYMBOLS } from '../config';
 import { parseMarketSymbol } from '../utils/symbol';
 import { WalletConnectionButton } from './WalletConnectionButton';
+
+// Ordered page list — mirrors Sidebar NAV_ITEMS, mode-filtered at render time.
+const ALL_PAGES = [
+  { path: '/dashboard', label: 'Dashboard',        mode: undefined },
+  { path: '/market',    label: 'Live Market',      mode: undefined },
+  { path: '/why',       label: 'Why This Signal?', mode: undefined },
+  { path: '/sentiment', label: 'Sentiment & News', mode: undefined },
+  { path: '/correlation',label: 'Correlation',     mode: undefined },
+  { path: '/alerts',    label: 'Alerts',           mode: undefined },
+  { path: '/trade',     label: 'Paper Trading',    mode: 'paper' as const },
+  { path: '/backtest',  label: 'Backtesting',      mode: undefined },
+  { path: '/execution', label: 'Execution',        mode: 'devnet' as const },
+  { path: '/status',    label: 'System Status',    mode: undefined },
+  { path: '/settings',  label: 'Settings',         mode: undefined },
+];
+
+function PageNavButtons() {
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const mode = useTradingStore((s) => s.mode);
+
+  const pages = ALL_PAGES.filter((p) => !p.mode || p.mode === mode);
+  const idx = pages.findIndex((p) => p.path === pathname);
+  const hasPrev = idx > 0;
+  const hasNext = idx >= 0 && idx < pages.length - 1;
+
+  const btnStyle = (enabled: boolean): React.CSSProperties => ({
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    width: 28, height: 28, borderRadius: 8, border: '1px solid var(--border)',
+    background: 'var(--bg-sub)', cursor: enabled ? 'pointer' : 'not-allowed',
+    opacity: enabled ? 1 : 0.35, color: 'var(--text-2)', flexShrink: 0,
+  });
+
+  return (
+    <div className="flex items-center gap-1 flex-shrink-0">
+      <button
+        title={hasPrev ? `← ${pages[idx - 1]?.label}` : 'No previous page'}
+        style={btnStyle(hasPrev)}
+        onClick={() => hasPrev && navigate(pages[idx - 1].path)}
+        onMouseEnter={(e) => { if (hasPrev) (e.currentTarget as HTMLElement).style.background = 'var(--border)'; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--bg-sub)'; }}
+      >
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+        </svg>
+      </button>
+      <button
+        title={hasNext ? `${pages[idx + 1]?.label} →` : 'No next page'}
+        style={btnStyle(hasNext)}
+        onClick={() => hasNext && navigate(pages[idx + 1].path)}
+        onMouseEnter={(e) => { if (hasNext) (e.currentTarget as HTMLElement).style.background = 'var(--border)'; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--bg-sub)'; }}
+      >
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+        </svg>
+      </button>
+    </div>
+  );
+}
 
 function TickerChip({ item }: { item: WatchlistItem }) {
   const pct = parseFloat(item.changePct);
@@ -142,6 +203,9 @@ export function TopBar() {
   return (
     <header className="h-12 flex items-center px-4 gap-4 flex-shrink-0"
       style={{ background: 'var(--bg-panel)', borderBottom: '1px solid var(--border)' }}>
+
+      {/* Prev / Next page navigation */}
+      <PageNavButtons />
 
       {searchOpen ? (
         <div className="flex-1 flex items-center gap-2 min-w-0">

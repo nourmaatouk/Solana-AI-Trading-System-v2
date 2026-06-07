@@ -23,6 +23,7 @@ aiRouter.get('/accuracy',       async (_req, res) => proxyGet(`${PYTHON_API}/acc
 aiRouter.get('/accuracy/log',   async (_req, res) => proxyGet(`${PYTHON_API}/accuracy/log`, res));
 aiRouter.get('/drift',          async (_req, res) => proxyGet(`${PYTHON_API}/drift`, res));
 aiRouter.get('/rl-signal',      async (_req, res) => proxyGet(`${PYTHON_API}/rl-signal`, res));
+aiRouter.get('/correlation',    async (req, res)  => proxyGet(`${PYTHON_API}/correlation${req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''}`, res));
 aiRouter.get('/retrain/status', async (_req, res) => proxyGet(`${PYTHON_API}/retrain/status`, res));
 
 // ── Shape-preserving fetches ─────────────────────────────────────────────────

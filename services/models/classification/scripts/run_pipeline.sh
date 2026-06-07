@@ -47,6 +47,15 @@ fi
 touch "$LOCKFILE"
 trap 'rm -f "$LOCKFILE"' EXIT
 
+# Ensure the orderbook collector is alive. It must run continuously, but it can
+# die (network drop, crash); if it is down the pipeline aborts at the orderbook
+# preflight and nothing downstream — including news — refreshes. start_orderbook.sh
+# is idempotent (it will not start a second instance), so this is a cheap
+# self-heal that runs every 15 minutes alongside the pipeline.
+echo "Ensuring orderbook collector is running..." | tee -a "$LOGFILE"
+"${SCRIPT_DIR}/start_orderbook.sh" 2>&1 | tee -a "$LOGFILE" || \
+    echo "WARNING: could not ensure orderbook collector" | tee -a "$LOGFILE"
+
 cd "$CLASSIFICATION_DIR"
 
 "$PYTHON" "$PIPELINE" \

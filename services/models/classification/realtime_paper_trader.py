@@ -424,15 +424,30 @@ def save_state(state: dict, path: Path) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 # METRICS
 # ─────────────────────────────────────────────────────────────────────────────
+def _to_unix(ts) -> int | None:
+    """Parse an ISO-8601 timestamp to UTC unix seconds. Returns None on failure."""
+    if not ts:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(ts))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return int(dt.timestamp())
+    except (ValueError, TypeError):
+        return None
+
+
 def compute_metrics(state: dict) -> dict:
-    n      = state["n_trades"]
-    n_wins = state["n_wins"]
-    eq     = state["equity"]
-    curve  = np.array(state["equity_curve"])
+    n         = state["n_trades"]
+    n_wins    = state["n_wins"]
+    eq        = state["equity"]
+    curve     = np.array(state["equity_curve"])
+    trade_log = state.get("trade_log", [])
 
     win_rate  = n_wins / n if n > 0 else 0.0
     total_ret = eq - 1.0
 
+    # ── Max drawdown over the recorded equity curve ───────────────────────────
     peak   = 1.0
     max_dd = 0.0
     for v in curve:
@@ -442,26 +457,95 @@ def compute_metrics(state: dict) -> dict:
         if dd > max_dd:
             max_dd = dd
 
-    net_rets = [t["net_pnl"] for t in state["trade_log"]]
+    net_rets = [t["net_pnl"] for t in trade_log]
+
+    # ── Sharpe ratio ──────────────────────────────────────────────────────────
+    # Per-trade Sharpe (mean / sample-std of net returns) annualised by the
+    # ACTUAL trade frequency, derived from the elapsed wall-clock time between
+    # the first entry and the last exit — never a hard-coded bar count.
+    sharpe = 0.0
     if len(net_rets) >= 2:
-        arr    = np.array(net_rets)
-        sharpe = arr.mean() / (arr.std() + 1e-12) * np.sqrt(252 * 96)
-    else:
-        sharpe = 0.0
+        arr = np.array(net_rets, dtype=float)
+        std = float(arr.std(ddof=1))
+        if std > 0.0:
+            per_trade = float(arr.mean()) / std
+            t0 = _to_unix(trade_log[0].get("entry_time"))
+            t1 = _to_unix(trade_log[-1].get("exit_time"))
+            if t0 is not None and t1 is not None and t1 > t0:
+                years = (t1 - t0) / (365.25 * 24 * 3600)
+                trades_per_year = len(net_rets) / years if years > 0 else float(len(net_rets))
+            else:
+                trades_per_year = float(len(net_rets))   # no time info → don't inflate
+            sharpe = per_trade * float(np.sqrt(max(trades_per_year, 0.0)))
+
+    # ── Win/loss economics (all from realised net P&L) ────────────────────────
+    wins       = [r for r in net_rets if r > 0]
+    losses     = [r for r in net_rets if r < 0]
+    gross_win  = float(sum(wins))
+    gross_loss = float(-sum(losses))               # positive magnitude
+    profit_factor = (gross_win / gross_loss) if gross_loss > 0 else None
+    avg_win    = (gross_win / len(wins)) if wins else 0.0
+    avg_loss   = (gross_loss / len(losses)) if losses else 0.0
+    expectancy = (sum(net_rets) / len(net_rets)) if net_rets else 0.0
+
+    # ── Timestamped strategy equity curve ─────────────────────────────────────
+    # Anchored at 1.0 at the first entry, then realised equity after each closed
+    # trade. Times are UTC unix seconds for the frontend chart.
+    equity_series: list[dict] = []
+    if trade_log:
+        first_t = _to_unix(trade_log[0].get("entry_time"))
+        if first_t is not None:
+            equity_series.append({"time": first_t, "value": 1.0})
+        for t in trade_log:
+            ts = _to_unix(t.get("exit_time"))
+            if ts is not None and t.get("equity_after") is not None:
+                equity_series.append({"time": ts, "value": round(float(t["equity_after"]), 6)})
+
+    # ── Buy-and-hold benchmark from real recorded SOL prices ──────────────────
+    # Normalised to 1.0 at the first entry price so it is directly comparable to
+    # the strategy curve. Built only from prices the trader actually observed.
+    benchmark_series: list[dict] = []
+    if trade_log:
+        p0 = trade_log[0].get("entry_price")
+        if p0 and float(p0) > 0:
+            p0 = float(p0)
+            by_time: dict[int, float] = {}
+            for t in trade_log:
+                for tkey, pkey in (("entry_time", "entry_price"), ("exit_time", "exit_price")):
+                    ts = _to_unix(t.get(tkey))
+                    px = t.get(pkey)
+                    if ts is not None and px:
+                        by_time[ts] = float(px) / p0
+            benchmark_series = [{"time": ts, "value": round(by_time[ts], 6)} for ts in sorted(by_time)]
+
+    # ── Period covered (days between first entry and last exit) ───────────────
+    period_days = None
+    if trade_log:
+        first_t = _to_unix(trade_log[0].get("entry_time"))
+        last_t  = _to_unix(trade_log[-1].get("exit_time"))
+        if first_t is not None and last_t is not None and last_t >= first_t:
+            period_days = round((last_t - first_t) / 86400.0, 1)
 
     exit_counts: dict[str, int] = {}
-    for t in state["trade_log"]:
+    for t in trade_log:
         reason = t.get("exit_reason", "HORIZON")
         exit_counts[reason] = exit_counts.get(reason, 0) + 1
 
     return {
-        "n_trades":     n,
-        "win_rate":     round(win_rate, 4),
-        "total_return": round(total_ret, 6),
-        "max_drawdown": round(max_dd, 6),
-        "sharpe":       round(float(sharpe), 4),
-        "equity":       round(eq, 6),
-        "exit_counts":  exit_counts,
+        "n_trades":         n,
+        "win_rate":         round(win_rate, 4),
+        "total_return":     round(total_ret, 6),
+        "max_drawdown":     round(max_dd, 6),
+        "sharpe":           round(float(sharpe), 4),
+        "equity":           round(eq, 6),
+        "profit_factor":    round(profit_factor, 4) if profit_factor is not None else None,
+        "avg_win":          round(avg_win, 6),
+        "avg_loss":         round(avg_loss, 6),
+        "expectancy":       round(expectancy, 6),
+        "period_days":      period_days,
+        "equity_series":    equity_series,
+        "benchmark_series": benchmark_series,
+        "exit_counts":      exit_counts,
     }
 
 

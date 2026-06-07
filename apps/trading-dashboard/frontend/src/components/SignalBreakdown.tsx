@@ -188,12 +188,6 @@ export function SignalBreakdown() {
         </div>
       )}
 
-      {/* Reason */}
-      {signal.reason && (
-        <div className="pt-1" style={{ borderTop: '1px solid var(--border)' }}>
-          <p className="text-xs leading-relaxed" style={{ color: 'var(--text-2)' }}>{signal.reason}</p>
-        </div>
-      )}
     </div>
   );
 }

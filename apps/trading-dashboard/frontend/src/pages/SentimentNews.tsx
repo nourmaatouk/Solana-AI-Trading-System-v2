@@ -54,10 +54,6 @@ export function SentimentNews() {
     <div className="flex-1 overflow-y-auto p-6 space-y-5">
       <div>
         <h1 className="text-xl font-bold" style={{ color: 'var(--text-1)' }}>Sentiment &amp; News</h1>
-        <p className="text-sm mt-1" style={{ color: 'var(--text-3)' }}>
-          Financial headlines from GDELT and RSS feeds, scored by FinBERT. This feed drives the
-          sentiment component of the fused trading signal.
-        </p>
       </div>
 
       {/* Contribution-to-signal explainer (real weight from config) */}
@@ -81,9 +77,9 @@ export function SentimentNews() {
           )}
         </div>
         <p className="text-xs flex-1 min-w-[220px]" style={{ color: 'var(--text-3)' }}>
-          FinBERT classifies each headline as positive / negative / neutral. The relevance‑weighted
-          average feeds the fusion layer at {wpct(FUSION_WEIGHT_SENTIMENT)} of the final score; a
-          high‑impact event (hack, outage, listing) can additionally shift the decision.
+          Each headline is rated positive, negative, or neutral. The overall news mood counts for
+          about {wpct(FUSION_WEIGHT_SENTIMENT)} of the trading signal, and big events like a hack,
+          outage, or exchange listing can move it more.
         </p>
       </div>
 
@@ -131,10 +127,6 @@ export function SentimentNews() {
                   <SentPill label={a.sentiment_label} />
                 </div>
                 <div className="flex flex-wrap items-center gap-2 text-xs" style={{ color: 'var(--text-3)' }}>
-                  {a.feed_source && (
-                    <span className="px-1.5 py-0.5 rounded font-semibold"
-                      style={{ background: 'var(--accent-bg)', color: 'var(--accent)' }}>{a.feed_source}</span>
-                  )}
                   {a.source && <span>{a.source}</span>}
                   <span>· {fmtDate(a.timestamp)}</span>
                   {a.sentiment_score != null && <span>· score {a.sentiment_score.toFixed(3)}</span>}

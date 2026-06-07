@@ -1,8 +1,5 @@
 import { useState, useEffect, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useWallet } from '@solana/wallet-adapter-react';
-import { WalletReadyState } from '@solana/wallet-adapter-base';
-import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { useTradingStore } from '../store';
 import {
   ACTIVE_TIMEFRAME,
@@ -15,26 +12,11 @@ import {
   FUSION_WEIGHT_GNN,
   FUSION_WEIGHT_RL,
 } from '../config';
+import { useSystemWallet } from '../hooks/useSystemWallet';
 import { formatMarketPair } from '../utils/symbol';
 import { fetchFusion, fetchSignal } from '../services/api';
 import type { AISignalData } from '../types';
 import logoImg from '../assets/logo.png';
-
-// ── Browser-aware Phantom install helpers ────────────────────────────────────
-function getBrowserName(): string {
-  const ua = navigator.userAgent;
-  if (ua.includes('Edg/')) return 'Edge';
-  if (ua.includes('Firefox/')) return 'Firefox';
-  if (ua.includes('OPR/') || ua.includes('Opera/')) return 'Opera';
-  if (ua.includes('Chrome/')) return 'Chrome';
-  return 'your browser';
-}
-
-function getPhantomInstallUrl(): string {
-  // Always use Phantom's official download page — it detects the browser
-  // and links to the correct verified extension store automatically.
-  return 'https://phantom.app/download';
-}
 
 // ── Derived from config — no hard-coded marketing numbers ────────────────────
 const MARKET_PAIR = formatMarketPair();
@@ -107,13 +89,9 @@ const STATS: { value: string; label: string }[] = [
 
 export function LandingPage() {
   const navigate = useNavigate();
-  const { connected, wallet, connect } = useWallet();
-  const { setVisible } = useWalletModal();
+  const { connected: walletConnected, connect: connectSystemWallet } = useSystemWallet();
   const setMode = useTradingStore((s) => s.setMode);
   const [chooserOpen, setChooserOpen] = useState(false);
-  const [awaitingWallet, setAwaitingWallet] = useState(false);
-  const [walletError, setWalletError] = useState<string | null>(null);
-  const [walletInstallUrl, setWalletInstallUrl] = useState<string | null>(null);
   const [phraseIdx, setPhraseIdx] = useState(0);
   const [signal, setSignal] = useState<AISignalData | null>(null);
 
@@ -150,70 +128,16 @@ export function LandingPage() {
     return () => clearInterval(id);
   }, []);
 
-  // Step 1 — wallet picked from modal: call connect() to open the extension popup.
-  // The modal only calls select(); with autoConnect=false we must trigger connect()
-  // ourselves.
-  // Guard: if readyState is NotDetected the adapter would call window.open(phantom.app)
-  // instead of opening the extension. Stop that and show a helpful message instead.
-  useEffect(() => {
-    if (!awaitingWallet || !wallet || connected) return;
-
-    if (wallet.readyState === WalletReadyState.NotDetected) {
-      // The adapter cached NotDetected at mount time. Check whether Phantom
-      // has injected into the page since then (late injection race condition).
-      const liveProvider =
-        (window as Record<string, any>).phantom?.solana ??
-        (window as Record<string, any>).solana;
-
-      if (liveProvider?.isPhantom) {
-        // Phantom IS present — the adapter's cache is stale. Fix it so
-        // connect() doesn't call window.open(phantom.app) and throw.
-        const adapterAny = wallet.adapter as unknown as {
-          _readyState: WalletReadyState;
-          emit: (event: string, ...args: unknown[]) => void;
-        };
-        adapterAny._readyState = WalletReadyState.Installed;
-        adapterAny.emit('readyStateChange', WalletReadyState.Installed);
-        // Fall through to connect() below — adapter is now Installed.
-      } else {
-        // Truly not installed/injected — show browser-specific install prompt.
-        const browser = getBrowserName();
-        setWalletError(
-          `Phantom is not detected in ${browser}. ` +
-          `If it's already installed, click the Phantom icon in the toolbar and refresh. ` +
-          `Otherwise install it for ${browser} using the button below.`
-        );
-        setWalletInstallUrl(getPhantomInstallUrl());
-        setAwaitingWallet(false);
-        return;
-      }
-    }
-
-    connect().catch((err: Error) => {
-      setWalletError(err.message ?? 'Connection rejected.');
-      setAwaitingWallet(false);
-    });
-  }, [awaitingWallet, wallet, connected, connect]);
-
-  // Step 2 — wallet connected: navigate to the trading screen.
-  useEffect(() => {
-    if (awaitingWallet && connected) {
-      setAwaitingWallet(false);
-      setChooserOpen(false);
-      setMode('devnet');
-      navigate('/execution');
-    }
-  }, [awaitingWallet, connected, navigate, setMode]);
-
-  const startWithWallet = () => {
-    if (connected) {
-      setMode('devnet');
-      navigate('/execution');
-      return;
-    }
-    setAwaitingWallet(true);
-    setChooserOpen(false);  // close our chooser so the wallet modal isn't stacked behind it
-    setVisible(true);       // opens the standard Solana wallet-adapter picker
+  // Connect Wallet & Trade — enters devnet using the backend Dev Wallet (system
+  // keypair); no browser extension required. Navigating here (rather than via an
+  // effect on the connected flag) keeps the redirect tied to this explicit
+  // click, so a pre-existing Dev Wallet session never auto-bounces the landing
+  // page on load.
+  const startWithWallet = async () => {
+    setChooserOpen(false);
+    await connectSystemWallet();
+    setMode('devnet');
+    navigate('/execution');
   };
 
   // Small illustrative mockup shown under each "how to use" step.
@@ -420,47 +344,11 @@ export function LandingPage() {
 
       {/* ── Choose-how-to-start modal ────────────────────────────────────── */}
       {chooserOpen && (
-        <div className="lp-modal-overlay" onClick={() => { setChooserOpen(false); setWalletError(null); setWalletInstallUrl(null); }}>
+        <div className="lp-modal-overlay" onClick={() => setChooserOpen(false)}>
           <div className="lp-modal" onClick={(e) => e.stopPropagation()}>
-            <button className="lp-modal-close" aria-label="Close" onClick={() => { setChooserOpen(false); setWalletError(null); setWalletInstallUrl(null); }}>×</button>
+            <button className="lp-modal-close" aria-label="Close" onClick={() => setChooserOpen(false)}>×</button>
             <h2 className="lp-modal-title">How do you want to start?</h2>
             <p className="lp-modal-sub">Explore in demo mode, or connect your wallet to execute Guardian-validated trades on devnet.</p>
-
-            {walletError && (
-              <div style={{
-                margin: '16px 0 0',
-                padding: '12px 16px',
-                borderRadius: 12,
-                background: 'rgba(239,68,68,0.08)',
-                border: '1px solid rgba(239,68,68,0.35)',
-                color: '#ef4444',
-                fontSize: 13,
-                lineHeight: 1.5,
-              }}>
-                {walletError}
-                {walletInstallUrl && (
-                  <div style={{ marginTop: 10 }}>
-                    <a
-                      href={walletInstallUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{
-                        display: 'inline-block',
-                        padding: '6px 14px',
-                        borderRadius: 8,
-                        background: '#7C3AED',
-                        color: '#fff',
-                        fontWeight: 700,
-                        fontSize: 12,
-                        textDecoration: 'none',
-                      }}
-                    >
-                      Install Phantom →
-                    </a>
-                  </div>
-                )}
-              </div>
-            )}
 
             <div className="lp-modal-options">
               <button className="lp-opt" onClick={() => { setChooserOpen(false); setMode('paper'); navigate('/market'); }}>
@@ -474,7 +362,7 @@ export function LandingPage() {
                 <div className="lp-opt-emoji">👛</div>
                 <h3>Connect Wallet &amp; Trade</h3>
                 <p>Connect your Solana wallet to execute trades on Solana devnet (a test network — no real funds), each validated by the Guardian before it runs.</p>
-                <span className="lp-opt-link">{connected ? 'Start trading →' : 'Connect wallet →'}</span>
+                <span className="lp-opt-link">{walletConnected ? 'Start trading →' : 'Connect wallet →'}</span>
               </button>
             </div>
           </div>

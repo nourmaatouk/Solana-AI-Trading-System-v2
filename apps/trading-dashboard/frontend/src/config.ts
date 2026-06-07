@@ -155,6 +155,20 @@ export const SOLANA_RPC_URL = envString('VITE_SOLANA_RPC_URL', 'https://api.devn
 export const ENABLE_PHANTOM_WALLET = envString('VITE_ENABLE_PHANTOM_WALLET', 'true') === 'true';
 
 /**
+ * Public key of the backend Devnet system wallet, used by the "Dev Wallet"
+ * connect option. The backend GET /api/execution/status is the primary source;
+ * this env value is only an offline fallback when the backend is unreachable.
+ * Leave empty to require the backend to supply it (no fallback).
+ */
+export const SYSTEM_WALLET_PUBLIC_KEY = envString('VITE_SYSTEM_WALLET_PUBLIC_KEY', '');
+
+/** Base URL of the Solana block explorer used for transaction links. */
+export const SOLANA_EXPLORER_BASE_URL = envString('VITE_SOLANA_EXPLORER_BASE_URL', 'https://explorer.solana.com');
+
+/** Official Phantom wallet download/install page (browser-detecting). */
+export const PHANTOM_INSTALL_URL = envString('VITE_PHANTOM_INSTALL_URL', 'https://phantom.app/download');
+
+/**
  * Wallet mode — controls whether the UI requires a connected browser wallet.
  * phantom : browser wallet required; publicKey sent with every execution request.
  * system  : backend uses its own keypair; no browser wallet UI shown.

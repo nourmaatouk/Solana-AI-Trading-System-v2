@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useWallet } from '@solana/wallet-adapter-react';
+import { useSystemWallet } from '../hooks/useSystemWallet';
 import { fetchExecutionStatus, type ExecutionStatusDto } from '../services/executionApi';
 import { useTradingStore } from '../store';
 import { EXECUTION_PANEL_REFRESH_MS } from '../config';
@@ -14,6 +16,9 @@ export function ModeBanner() {
   const uiMode = useTradingStore((s) => s.mode);
   const setMode = useTradingStore((s) => s.setMode);
   const navigate = useNavigate();
+  const { connected: phantomConnected } = useWallet();
+  const { connected: systemConnected } = useSystemWallet();
+  const connected = phantomConnected || systemConnected;
   const [status, setStatus] = useState<ExecutionStatusDto | null>(null);
   const [offline, setOffline] = useState(false);
 
@@ -34,7 +39,10 @@ export function ModeBanner() {
 
   const execMode = uiMode;
   const switchTo: 'paper' | 'devnet' = uiMode === 'paper' ? 'devnet' : 'paper';
+  // Switching to devnet is only allowed when a wallet is connected.
+  const devnetLocked = switchTo === 'devnet' && !connected;
   const doSwitch = () => {
+    if (devnetLocked) return;
     setMode(switchTo);
     navigate(switchTo === 'devnet' ? '/execution' : '/trade');
   };
@@ -65,13 +73,33 @@ export function ModeBanner() {
       )}
 
       <span className="ml-auto flex items-center gap-2">
-        <button onClick={doSwitch}
+        {/* Wallet-required hint — shown only when the user is in paper mode without a wallet */}
+        {devnetLocked && (
+          <span className="flex items-center gap-1 text-xs"
+            style={{ color: 'var(--text-3)' }}>
+            <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+            Connect your wallet to access Devnet mode
+          </span>
+        )}
+        <button
+          onClick={doSwitch}
+          disabled={devnetLocked}
           className="px-2 py-0.5 rounded font-semibold transition-colors"
-          style={{ color: 'var(--text-2)', border: '1px solid var(--border)', background: 'var(--bg-sub)' }}
-          title={switchTo === 'devnet'
-            ? 'Connect a wallet and trade on Solana devnet'
-            : 'Switch to simulated paper trading (no wallet)'}>
-          Switch to {switchTo === 'devnet' ? 'Devnet' : 'Paper'} →
+          style={{
+            color:      devnetLocked ? 'var(--text-3)' : 'var(--text-2)',
+            border:     `1px solid ${devnetLocked ? 'var(--border)' : 'var(--border)'}`,
+            background: 'var(--bg-sub)',
+            cursor:     devnetLocked ? 'not-allowed' : 'pointer',
+            opacity:    devnetLocked ? 0.5 : 1,
+          }}
+          title={devnetLocked
+            ? 'Connect a Solana wallet to unlock Devnet mode'
+            : switchTo === 'devnet'
+              ? 'Switch to Devnet — real transactions on Solana test network'
+              : 'Switch to simulated paper trading (no wallet required)'}>
+          {devnetLocked ? '🔒 ' : ''}Switch to {switchTo === 'devnet' ? 'Devnet' : 'Paper'} →
         </button>
         {mainnetDisabled && (
           <span className="px-2 py-0.5 rounded font-semibold"

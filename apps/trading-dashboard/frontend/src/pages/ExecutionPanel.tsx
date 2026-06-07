@@ -369,8 +369,11 @@ export function ExecutionPanel() {
               </div>
             )}
             {last.narration && (
-              <div className="mt-3 text-xs italic" style={{ color: 'var(--text-3)' }}>
-                "{last.narration}"
+              <div className="mt-3 rounded-lg p-3" style={{ background: 'var(--bg-sub)', border: '1px solid var(--border)' }}>
+                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--accent)' }}>
+                  <span>✦</span> AI Narrator · Sentinel
+                </div>
+                <p className="text-xs italic" style={{ color: 'var(--text-2)' }}>"{last.narration}"</p>
               </div>
             )}
           </div>

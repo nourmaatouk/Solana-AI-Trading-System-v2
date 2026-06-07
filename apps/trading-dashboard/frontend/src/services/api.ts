@@ -107,3 +107,32 @@ export const triggerRetrain = (): Promise<Record<string, unknown>> =>
 
 export const fetchRLSignal = (): Promise<Record<string, unknown>> =>
   get('/ai/rl-signal');
+
+export interface CorrelationCandle {
+  timestamp: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export interface CorrelationData {
+  status: string;
+  generated_at_utc: string;
+  btc_features: {
+    btc_return_4: number | null;
+    btc_return_16: number | null;
+    btc_vol_12: number | null;
+    btc_vs_sma20: number | null;
+    btc_rsi_14: number | null;
+    feature_timestamp: string | null;
+  };
+  btc_candles: CorrelationCandle[];
+  sol_candles: CorrelationCandle[];
+  rolling_correlation: number | null;
+  candles_requested: number;
+}
+
+export const fetchCorrelation = (candles = 60): Promise<CorrelationData> =>
+  get(`/ai/correlation?candles=${candles}`);
