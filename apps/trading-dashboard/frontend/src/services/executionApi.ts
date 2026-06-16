@@ -10,7 +10,7 @@ import { timeoutSignal } from '../utils/timeoutSignal';
 
 const BASE = '/api';
 
-export type ExecutionMode = 'paper' | 'devnet' | 'mainnet';
+export type ExecutionMode = 'paper' | 'devnet';
 export type GuardianDecision = 'APPROVE' | 'BLOCK';
 
 export interface GuardianResultDto {
@@ -51,7 +51,6 @@ export interface ExecutionWorkflowDto {
 
 export interface ExecutionStatusDto {
   execution_mode: ExecutionMode;
-  allow_mainnet: boolean;
   require_guardian_approval: boolean;
   emergency_stop: {
     enabled: boolean;
@@ -75,7 +74,6 @@ export interface GuardianPolicyDto {
     maxTradeSizeSol: number;
     signalMaxAgeSeconds: number;
     allowedAssets: string[];
-    allowMainnetExecution: boolean;
     emergencyStop: boolean;
   };
   notes: string[];

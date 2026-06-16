@@ -65,7 +65,6 @@ function setEnv(env: Partial<NodeJS.ProcessEnv>): void {
 const SAFE_DEFAULTS: NodeJS.ProcessEnv = {
   EXECUTION_MODE: 'paper',
   REQUIRE_GUARDIAN_APPROVAL: 'true',
-  ALLOW_MAINNET_EXECUTION: 'false',
   EMERGENCY_STOP: 'false',
   ENABLE_ELIZA_NARRATION: 'false',
   SOLANA_CLUSTER: 'devnet',

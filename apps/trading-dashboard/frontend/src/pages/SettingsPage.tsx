@@ -244,23 +244,6 @@ export function SettingsPage() {
           </Row>
         </Section>
 
-        <Section title="About">
-          <div className="text-xs space-y-1.5" style={{ color: 'var(--text-2)' }}>
-            {[
-              ['System',      'Solvanta AI Trading Dashboard'],
-              ['Stack',       'React · Node.js · FastAPI · XGBoost'],
-              ['Data source', 'Binance WebSocket'],
-              ['AI models',   'XGBoost + FinBERT + TEN-GNN'],
-              ['Execution',   'Guardian + Jupiter v6'],
-            ].map(([name, value]) => (
-              <div key={name} className="flex justify-between">
-                <span style={{ color: 'var(--text-3)' }}>{name}</span>
-                <span className="font-mono" style={{ color: 'var(--text-1)' }}>{value}</span>
-              </div>
-            ))}
-          </div>
-        </Section>
-
         <p className="text-xs text-center" style={{ color: 'var(--text-3)' }}>
           Settings are stored in localStorage. Save syncs the trading mode with the backend.
         </p>

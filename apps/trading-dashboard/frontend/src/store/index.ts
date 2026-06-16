@@ -47,10 +47,6 @@ interface TradingStore {
   theme: 'dark' | 'light';
   toggleTheme: () => void;
 
-  // Alerts
-  alertsEnabled: boolean;
-  toggleAlerts: () => void;
-
   // Actions
   setTicker: (t: TickerData) => void;
   addKline: (k: KlineData) => void;
@@ -96,14 +92,6 @@ export const useTradingStore = create<TradingStore>((set) => ({
       localStorage.setItem('theme', next);
       document.documentElement.setAttribute('data-theme', next);
       return { theme: next };
-    }),
-
-  alertsEnabled: localStorage.getItem('alertsEnabled') !== 'false',
-  toggleAlerts: () =>
-    set((state) => {
-      const next = !state.alertsEnabled;
-      localStorage.setItem('alertsEnabled', String(next));
-      return { alertsEnabled: next };
     }),
 
   setTicker: (t) => set({ ticker: t }),

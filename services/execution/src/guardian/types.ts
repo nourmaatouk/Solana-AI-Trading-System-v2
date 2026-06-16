@@ -5,7 +5,7 @@
 
 export type TradeAction = 'BUY' | 'SELL' | 'HOLD';
 export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'UNKNOWN';
-export type ExecutionMode = 'paper' | 'devnet' | 'mainnet';
+export type ExecutionMode = 'paper' | 'devnet';
 export type WalletMode = 'paper' | 'system' | 'phantom';
 
 /**
@@ -55,7 +55,6 @@ export type BlockReason =
   | 'LOW_CONFIDENCE'
   | 'HIGH_SPOOFING'
   | 'TRADE_SIZE_EXCEEDED'
-  | 'MAINNET_DISABLED'
   | 'INVALID_AMOUNT'
   | 'PROMPT_OVERRIDE_ATTEMPT'
   | 'MISSING_PHANTOM_WALLET'
@@ -101,7 +100,6 @@ export interface GuardianPolicy {
   maxDailyLossSol: number;
   signalMaxAgeSeconds: number;
   allowedAssets: string[];
-  allowMainnetExecution: boolean;
   emergencyStop: boolean;
   walletMode: WalletMode;
   /** Server-side override: when false, HIGH-risk signals are always blocked

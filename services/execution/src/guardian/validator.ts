@@ -17,7 +17,6 @@ import {
   checkConfidence,
   checkDailyLoss,
   checkEmergencyStop,
-  checkMainnetAllowed,
   checkPhantomWallet,
   checkPromptOverride,
   checkRequiredFields,
@@ -58,7 +57,6 @@ export class GuardianValidator {
       maxDailyLossSol: env.MAX_DAILY_LOSS_SOL,
       signalMaxAgeSeconds: env.SIGNAL_MAX_AGE_SECONDS,
       allowedAssets: env.ALLOWED_ASSETS,
-      allowMainnetExecution: env.ALLOW_MAINNET_EXECUTION,
       emergencyStop: env.EMERGENCY_STOP,
       walletMode: (env.WALLET_MODE ?? 'phantom') as WalletMode,
       allowHighRiskTrades: env.ALLOW_HIGH_RISK_TRADES,
@@ -97,7 +95,6 @@ export class GuardianValidator {
 
       // Execution-level rules.
       () => checkTradeSize(input.amount_sol, this.policy),
-      () => checkMainnetAllowed(input.execution_mode, this.policy),
       () => checkDailyLoss(input, this.policy),
       () => checkPhantomWallet(input, this.policy),
     ];

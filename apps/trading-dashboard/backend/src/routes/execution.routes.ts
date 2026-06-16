@@ -58,7 +58,7 @@ const workflow = new ExecutionWorkflow();
 // ── Input validation ────────────────────────────────────────────────────────
 const ExecutionRequestSchema = z.object({
   amount_sol: z.number().positive(),
-  execution_mode: z.enum(['paper', 'devnet', 'mainnet']).optional(),
+  execution_mode: z.enum(['paper', 'devnet']).optional(),
   narration_request: z.string().max(500).optional(),
   // Required when WALLET_MODE=phantom — validated by Guardian rule #12.
   phantom_public_key: z.string().optional(),
@@ -149,7 +149,7 @@ executionRouter.get('/status', async (_req, res) => {
   const eStop = readEmergencyStop();
   res.json({
     execution_mode: env.EXECUTION_MODE,
-    allow_mainnet: env.ALLOW_MAINNET_EXECUTION,
+    allow_mainnet: false,
     require_guardian_approval: env.REQUIRE_GUARDIAN_APPROVAL,
     emergency_stop: eStop,
     wallet: {

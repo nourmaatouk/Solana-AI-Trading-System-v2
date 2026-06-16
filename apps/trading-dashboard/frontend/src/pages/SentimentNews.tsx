@@ -1,9 +1,7 @@
 import { useEffect, useState } from 'react';
 import { fetchNews, fetchSentiment, type NewsArticle } from '../services/api';
-import { FUSION_WEIGHT_SENTIMENT } from '../config';
 
 const card = { background: 'var(--bg-panel)', border: '1px solid var(--border)' } as React.CSSProperties;
-const wpct = (w: number) => `${Math.round(w * 100)}%`;
 
 function SentPill({ label }: { label: string | null }) {
   const u = (label ?? '').toUpperCase();
@@ -54,33 +52,6 @@ export function SentimentNews() {
     <div className="flex-1 overflow-y-auto p-6 space-y-5">
       <div>
         <h1 className="text-xl font-bold" style={{ color: 'var(--text-1)' }}>Sentiment &amp; News</h1>
-      </div>
-
-      {/* Contribution-to-signal explainer (real weight from config) */}
-      <div className="rounded-xl p-5 flex flex-wrap items-center gap-x-6 gap-y-3" style={card}>
-        <div>
-          <div className="text-xs uppercase tracking-widest" style={{ color: 'var(--text-3)' }}>Weight in fusion</div>
-          <div className="text-2xl font-bold" style={{ color: 'var(--accent)' }}>{wpct(FUSION_WEIGHT_SENTIMENT)}</div>
-        </div>
-        <div className="h-8 w-px" style={{ background: 'var(--border)' }} />
-        <div>
-          <div className="text-xs uppercase tracking-widest mb-1" style={{ color: 'var(--text-3)' }}>Current aggregate sentiment</div>
-          {agg ? (
-            <div className="flex items-center gap-2">
-              <SentPill label={agg.label} />
-              <span className="text-sm font-mono" style={{ color: 'var(--text-2)' }}>
-                {agg.score != null ? agg.score.toFixed(3) : 'n/a'}
-              </span>
-            </div>
-          ) : (
-            <span className="text-sm" style={{ color: 'var(--text-3)' }}>{loading ? 'loading…' : 'unavailable'}</span>
-          )}
-        </div>
-        <p className="text-xs flex-1 min-w-[220px]" style={{ color: 'var(--text-3)' }}>
-          Each headline is rated positive, negative, or neutral. The overall news mood counts for
-          about {wpct(FUSION_WEIGHT_SENTIMENT)} of the trading signal, and big events like a hack,
-          outage, or exchange listing can move it more.
-        </p>
       </div>
 
       {/* News list with loading / error / empty states */}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useSystemWallet } from '../hooks/useSystemWallet';
@@ -15,7 +15,6 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Why This Signal?', path: '/why',     icon: 'M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z' },
   { label: 'Sentiment & News', path: '/sentiment', icon: 'M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z' },
   { label: 'Correlation',      path: '/correlation', icon: 'M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z' },
-  { label: 'Alerts',           path: '/alerts',  icon: 'M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9' },
   { label: 'Paper Trading',    path: '/trade',   mode: 'paper',  icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z' },
   { label: 'Backtesting',      path: '/backtest',icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
   { label: 'Execution',        path: '/execution', mode: 'devnet', icon: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z' },
@@ -23,19 +22,19 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Settings',         path: '/settings',icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z' },
 ];
 
-// SVG path for the lock/execution icon (shield-check) — reused for the locked state.
-const EXECUTION_ICON = 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z';
 
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const mode = useTradingStore((s) => s.mode);
-  const { connected: phantomConnected } = useWallet();
-  const { connected: systemConnected } = useSystemWallet();
-  const canAccessDevnet = phantomConnected || systemConnected;
-  // Show all mode-unrestricted items + items that match the current mode.
+  const { connected: phantomConnected, disconnect: phantomDisconnect } = useWallet();
+  const { connected: systemConnected, disconnect: systemDisconnect } = useSystemWallet();
+  const exitWalletMode = useCallback(() => {
+    if (phantomConnected) phantomDisconnect();
+    if (systemConnected) systemDisconnect();
+    window.location.href = '/';
+  }, [phantomConnected, phantomDisconnect, systemConnected, systemDisconnect]);
+
   const items = NAV_ITEMS.filter((item) => !item.mode || item.mode === mode);
-  // Devnet Execution is locked when neither Phantom nor Dev Wallet is connected.
-  const executionLocked = mode === 'paper' && !canAccessDevnet;
 
   return (
     <aside
@@ -88,31 +87,50 @@ export function Sidebar() {
             </NavLink>
           ))}
 
-          {/* Locked Execution entry — visible in paper mode so the user knows
-              Devnet Execution exists but requires a wallet connection. */}
-          {executionLocked && (
-            <div
-              title="Connect your Solana wallet to access Devnet Execution"
-              className={`flex items-center gap-2.5 rounded-lg text-xs font-medium select-none ${
-                collapsed ? 'justify-center px-0 py-2.5' : 'px-3 py-2'
-              }`}
-              style={{ color: 'var(--text-3)', cursor: 'not-allowed', opacity: 0.55 }}
-            >
-              <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d={EXECUTION_ICON} />
-              </svg>
-              {!collapsed && (
-                <span className="truncate flex items-center gap-1">
-                  Execution
-                  <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                  </svg>
-                </span>
-              )}
-            </div>
-          )}
         </div>
       </nav>
+
+      {/* Exit Devnet Mode — only visible in devnet/wallet mode */}
+      {mode === 'devnet' && (
+        <div className="px-2 pb-2">
+          <button
+            onClick={exitWalletMode}
+            title="Switch back to paper trading (no wallet required)"
+            className={`flex items-center gap-2 rounded-lg text-xs font-medium transition-colors cursor-pointer w-full ${
+              collapsed ? 'justify-center px-0 py-2.5' : 'px-3 py-2'
+            }`}
+            style={{ color: '#8B5CF6', border: '1px solid #8B5CF6', background: 'rgba(139,92,246,0.08)' }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(139,92,246,0.18)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(139,92,246,0.08)')}
+          >
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+            {!collapsed && <span className="truncate">Exit Wallet Mode</span>}
+          </button>
+        </div>
+      )}
+
+      {/* Exit Paper Mode — only visible in paper mode */}
+      {mode === 'paper' && (
+        <div className="px-2 pb-2">
+          <button
+            onClick={exitWalletMode}
+            title="Go back to the main dashboard"
+            className={`flex items-center gap-2 rounded-lg text-xs font-medium transition-colors cursor-pointer w-full ${
+              collapsed ? 'justify-center px-0 py-2.5' : 'px-3 py-2'
+            }`}
+            style={{ color: '#0ea5e9', border: '1px solid #0ea5e9', background: 'rgba(14,165,233,0.08)' }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(14,165,233,0.18)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(14,165,233,0.08)')}
+          >
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+            {!collapsed && <span className="truncate">Exit Paper Mode</span>}
+          </button>
+        </div>
+      )}
 
       {/* Collapse toggle */}
       <div className="px-2 py-4" style={{ borderTop: '1px solid var(--border)' }}>

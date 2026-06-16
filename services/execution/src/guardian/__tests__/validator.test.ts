@@ -21,7 +21,6 @@ const PERMISSIVE_POLICY: GuardianPolicy = {
   maxDailyLossSol: 0.5,
   signalMaxAgeSeconds: 300,
   allowedAssets: ['SOL/USDT'],
-  allowMainnetExecution: false,
   emergencyStop: false,
   walletMode: 'paper',   // existing tests run without any wallet requirement
   allowHighRiskTrades: false,
@@ -54,7 +53,6 @@ function makeValidator(overrides: Partial<GuardianPolicy> = {}) {
     env: {
       EXECUTION_MODE: 'devnet',
       REQUIRE_GUARDIAN_APPROVAL: true,
-      ALLOW_MAINNET_EXECUTION: false,
       EMERGENCY_STOP: false,
       ENABLE_ELIZA_NARRATION: false,
       SOLANA_CLUSTER: 'devnet',
@@ -158,18 +156,6 @@ describe('GuardianValidator — block branches', () => {
   it('blocks zero or negative trade size as INVALID_AMOUNT', () => {
     const r = makeValidator().validate(validInput({ amount_sol: 0 }));
     expect(r.blocked_by).toBe('INVALID_AMOUNT');
-  });
-
-  it('blocks mainnet when ALLOW_MAINNET_EXECUTION is false', () => {
-    const r = makeValidator().validate(validInput({ execution_mode: 'mainnet' }));
-    expect(r.blocked_by).toBe('MAINNET_DISABLED');
-  });
-
-  it('allows mainnet when ALLOW_MAINNET_EXECUTION is true', () => {
-    const r = makeValidator({ allowMainnetExecution: true }).validate(
-      validInput({ execution_mode: 'mainnet' }),
-    );
-    expect(r.approved).toBe(true);
   });
 
   it('blocks when required fields are missing', () => {
@@ -308,11 +294,6 @@ describe('GuardianValidator — phantom wallet rule', () => {
     expect(r.approved).toBe(true);
   });
 
-  it('wallet block comes after mainnet check in priority (mainnet still blocks first)', () => {
-    const v = makeValidator({ walletMode: 'phantom', allowMainnetExecution: false });
-    const r = v.validate(validInput({ execution_mode: 'mainnet', phantom_public_key: undefined }));
-    expect(r.blocked_by).toBe('MAINNET_DISABLED');
-  });
 });
 
 // ── checkUserRiskPreference ──────────────────────────────────────────────────

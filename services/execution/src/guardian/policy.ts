@@ -218,19 +218,6 @@ export function checkTradeSize(
   return null;
 }
 
-export function checkMainnetAllowed(
-  executionMode: string,
-  policy: GuardianPolicy,
-): RuleFailure | null {
-  if (executionMode === 'mainnet' && !policy.allowMainnetExecution) {
-    return {
-      reason: 'MAINNET_DISABLED',
-      message: 'mainnet execution is disabled (ALLOW_MAINNET_EXECUTION=false).',
-    };
-  }
-  return null;
-}
-
 /**
  * Defence against prompt-injection by way of the narration field.
  *

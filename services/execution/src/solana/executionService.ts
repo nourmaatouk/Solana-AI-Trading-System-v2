@@ -4,16 +4,13 @@
  *
  *   1. Refuses to execute without a positive GuardianResult.
  *   2. The mode used to pick the executor comes from the GUARDIAN-APPROVED
- *      action, never from the raw caller request. This means a caller can't
- *      sneak in a `mode: "mainnet"` after the Guardian thought it was
- *      validating a devnet request.
+ *      action, never from the raw caller request.
  */
 import { loadEnv } from '../config/env';
 import { log } from '../logger';
 import type { GuardianResult } from '../guardian/types';
 import { PaperExecutor } from './modes/paperExecutor';
 import { DevnetExecutor } from './modes/devnetExecutor';
-import { MainnetExecutor } from './modes/mainnetExecutor';
 import type {
   ExecutionContext,
   ExecutionResult,
@@ -24,7 +21,6 @@ import type {
 export interface ExecutionServiceDeps {
   paper?: ITransactionExecutor;
   devnet?: ITransactionExecutor;
-  mainnet?: ITransactionExecutor;
 }
 
 export class SolanaExecutionService {
@@ -32,9 +28,8 @@ export class SolanaExecutionService {
 
   constructor(deps: ExecutionServiceDeps = {}) {
     this.executors = {
-      paper:   deps.paper   ?? new PaperExecutor(),
-      devnet:  deps.devnet  ?? new DevnetExecutor(),
-      mainnet: deps.mainnet ?? new MainnetExecutor(),
+      paper:  deps.paper  ?? new PaperExecutor(),
+      devnet: deps.devnet ?? new DevnetExecutor(),
     };
   }
 
@@ -96,7 +91,6 @@ export class SolanaExecutionService {
   /**
    * Build an unsigned VersionedTransaction for client-side (Phantom) signing.
    * Returns null for paper mode — there is no real transaction to sign.
-   * Throws for mainnet/devnet when prerequisites are missing (no Jupiter, no phantom key).
    */
   async prepareApproved(
     guardianResult: GuardianResult,

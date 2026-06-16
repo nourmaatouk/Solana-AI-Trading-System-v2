@@ -2,7 +2,7 @@
  * Centralised environment loader for the execution layer.
  *
  * Every configurable value the Guardian and Solana code use flows through here.
- * Anything security-critical (mainnet flag, private key presence, RPC URL) is
+ * Anything security-critical (private key presence, RPC URL) is
  * validated with zod at module load time so misconfigurations fail loud and
  * early instead of becoming runtime surprises.
  */
@@ -34,18 +34,17 @@ const csvList = z
 
 // ── Schema ──────────────────────────────────────────────────────────────────
 const ExecutionEnvSchema = z.object({
-  EXECUTION_MODE: z.enum(['paper', 'devnet', 'mainnet']).default('paper'),
+  EXECUTION_MODE: z.enum(['paper', 'devnet']).default('paper'),
   REQUIRE_GUARDIAN_APPROVAL: boolFromString.default('true'),
-  ALLOW_MAINNET_EXECUTION: boolFromString.default('false'),
   EMERGENCY_STOP: boolFromString.default('false'),
   ENABLE_ELIZA_NARRATION: boolFromString.default('false'),
 
   // Solana network
-  SOLANA_CLUSTER: z.enum(['devnet', 'testnet', 'mainnet-beta']).default('devnet'),
+  SOLANA_CLUSTER: z.enum(['devnet', 'testnet']).default('devnet'),
   SOLANA_RPC_URL: z.string().url().default('https://api.devnet.solana.com'),
   SOLANA_PUBLIC_KEY: z.string().optional(),
   // Intentionally optional and never logged. Only required when EXECUTION_MODE
-  // is devnet/mainnet AND a signing operation is requested.
+  // is devnet AND a signing operation is requested.
   SOLANA_PRIVATE_KEY: z.string().optional(),
 
   // Limits
@@ -68,22 +67,18 @@ const ExecutionEnvSchema = z.object({
   // Wallet mode: phantom = browser wallet required, system = backend keypair, paper = no wallet
   WALLET_MODE: z.enum(['paper', 'system', 'phantom']).default('phantom'),
 
-  // Devnet airdrop limits (ignored on mainnet/testnet — routes reject there)
+  // Devnet airdrop limits (ignored on testnet — routes reject there)
   DEVNET_AIRDROP_AMOUNT_SOL: positiveNumberString.default('1'),
   MAX_DEVNET_AIRDROP_SOL: positiveNumberString.default('2'),
 
   // ── Jupiter DEX integration ────────────────────────────────────────────────
   // Enable real Jupiter v6 swaps instead of the SOL self-transfer placeholder.
-  // NOTE: Jupiter's quote/swap API is mainnet-only. When EXECUTION_MODE=devnet,
-  // the transaction will be built against mainnet program addresses and will
-  // fail on a devnet RPC. For real devnet testing, point SOLANA_RPC_URL at a
-  // mainnet RPC and use EXECUTION_MODE=mainnet with tiny amounts.
   JUPITER_SWAP_ENABLED: boolFromString.default('false'),
   JUPITER_API_URL: z.string().url().default('https://quote-api.jup.ag/v6'),
   // Slippage tolerance in basis points (50 = 0.5 %). Guardian blocks trades
   // above MAX_SPOOFING_CONFIDENCE, so tighten slippage here independently.
   JUPITER_SLIPPAGE_BPS: positiveNumberString.default('50'),
-  // Quote currency mint address. Defaults to USDC (mainnet). For SOL/USDT
+  // Quote currency mint address. Defaults to USDC. For SOL/USDT
   // pairs, set to the USDT mint: Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB
   QUOTE_CURRENCY_MINT: z
     .string()
@@ -151,7 +146,7 @@ export function resetEnvCache(): void {
 
 /**
  * Return whether the runtime is configured to perform real on-chain operations.
- * paper mode → false (simulated). devnet/mainnet → true.
+ * paper mode → false (simulated). devnet → true.
  */
 export function isOnChainMode(env: ExecutionEnv = loadEnv()): boolean {
   return env.EXECUTION_MODE !== 'paper';

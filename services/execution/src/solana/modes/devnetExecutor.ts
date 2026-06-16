@@ -36,15 +36,6 @@ export class DevnetExecutor implements ITransactionExecutor {
 
   constructor(handle?: SolanaClientHandle) {
     const env = loadEnv();
-    // When Jupiter is enabled the RPC must point at mainnet (Jupiter programs
-    // don't exist on devnet). Warn loudly; do not throw — the caller chose
-    // the RPC URL explicitly.
-    if (env.JUPITER_SWAP_ENABLED && env.SOLANA_CLUSTER !== 'mainnet-beta') {
-      log.warn('execution.devnet.jupiter.cluster_mismatch', {
-        cluster: env.SOLANA_CLUSTER,
-        note: 'Jupiter requires a mainnet RPC. Set SOLANA_RPC_URL + SOLANA_CLUSTER=mainnet-beta or submissions will fail.',
-      });
-    }
     this.handle = handle ?? buildSolanaClient();
   }
 

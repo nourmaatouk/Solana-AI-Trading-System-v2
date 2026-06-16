@@ -59,8 +59,7 @@ export function DevnetDashboard() {
       <div>
         <h1 className="text-xl font-bold" style={{ color: 'var(--text-1)' }}>Devnet Dashboard</h1>
         <p className="text-sm mt-1" style={{ color: 'var(--text-3)' }}>
-          Live on-chain execution on Solana's test network. Every trade is Guardian-validated before it's signed —
-          mainnet stays disabled.
+          Live on-chain execution on Solana's test network. Every trade is Guardian-validated before it's signed.
         </p>
       </div>
 
@@ -96,13 +95,6 @@ export function DevnetDashboard() {
           trend={exec?.status === 'confirmed' ? 'up' : exec?.status === 'failed' ? 'down' : 'neutral'}
           subtitle="Most recent result"
           icon={ic('M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z')}
-        />
-        <MetricCard
-          title="Mainnet"
-          value={status ? (status.allow_mainnet ? 'Allowed' : 'Disabled') : '—'}
-          trend={status?.allow_mainnet ? 'down' : 'up'}
-          subtitle={status?.allow_mainnet ? '⚠ real funds' : '🔒 protected'}
-          icon={ic('M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z')}
         />
         <MetricCard
           title="Emergency Stop"

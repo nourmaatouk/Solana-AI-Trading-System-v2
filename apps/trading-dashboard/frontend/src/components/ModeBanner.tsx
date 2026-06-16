@@ -9,7 +9,7 @@ import { EXECUTION_PANEL_REFRESH_MS } from '../config';
 /**
  * Thin always-visible bar that tells the user which mode they're in. The label
  * reflects the user's chosen journey (Explore = Paper, Connect Wallet = Devnet);
- * the safety chips (mainnet lock, emergency stop, cluster) come live from
+ * the safety chips (emergency stop, cluster) come live from
  * /api/execution/status. Includes a control to switch modes.
  */
 export function ModeBanner() {
@@ -46,7 +46,6 @@ export function ModeBanner() {
     setMode(switchTo);
     navigate(switchTo === 'devnet' ? '/execution' : '/trade');
   };
-  const mainnetDisabled = status ? !status.allow_mainnet : true;
   const eStop = status?.emergency_stop.enabled ?? false;
   const cluster = status?.wallet.cluster ?? null;
 
@@ -101,13 +100,6 @@ export function ModeBanner() {
               : 'Switch to simulated paper trading (no wallet required)'}>
           {devnetLocked ? '🔒 ' : ''}Switch to {switchTo === 'devnet' ? 'Devnet' : 'Paper'} →
         </button>
-        {mainnetDisabled && (
-          <span className="px-2 py-0.5 rounded font-semibold"
-            style={{ color: 'var(--green)', background: 'var(--green-bg)', border: '1px solid var(--green-bd)' }}
-            title="Mainnet execution is hard-disabled by configuration (ALLOW_MAINNET_EXECUTION=false).">
-            🔒 MAINNET DISABLED
-          </span>
-        )}
         {eStop && (
           <span className="px-2 py-0.5 rounded font-semibold"
             style={{ color: 'var(--red)', background: 'var(--red-bg)', border: '1px solid var(--red-bd)' }}>

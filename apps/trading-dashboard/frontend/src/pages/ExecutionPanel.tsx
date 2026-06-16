@@ -32,9 +32,8 @@ const card: React.CSSProperties = {
 };
 
 const MODE_STYLES: Record<string, { bg: string; fg: string; label: string }> = {
-  paper:   { bg: 'var(--bg-sub)',  fg: 'var(--text-1)', label: 'PAPER' },
-  devnet:  { bg: 'var(--accent-bg)', fg: 'var(--accent)', label: 'DEVNET' },
-  mainnet: { bg: 'var(--red-bg)',  fg: 'var(--red)',     label: 'MAINNET' },
+  paper:  { bg: 'var(--bg-sub)',    fg: 'var(--text-1)', label: 'PAPER' },
+  devnet: { bg: 'var(--accent-bg)', fg: 'var(--accent)', label: 'DEVNET' },
 };
 
 export function ExecutionPanel() {
@@ -208,7 +207,7 @@ export function ExecutionPanel() {
             Execution
           </h1>
           <p className="text-sm" style={{ color: 'var(--text-3)' }}>
-            Validated trading signals → Guardian → Solana. Mainnet is disabled by default.
+            Validated trading signals → Guardian → Solana devnet.
           </p>
         </div>
 
@@ -226,7 +225,7 @@ export function ExecutionPanel() {
           <div className="px-4 py-2 text-xs rounded-xl"
             style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent-bd)', color: 'var(--accent)' }}>
             <strong>DEVNET</strong> — these are real on-chain transactions on Solana's <strong>test network</strong>.
-            No real money is involved. Mainnet stays disabled unless explicitly enabled in backend config.
+            No real money is involved.
           </div>
         )}
 
@@ -273,7 +272,6 @@ export function ExecutionPanel() {
               value={status?.wallet.balance_sol != null ? `${status.wallet.balance_sol.toFixed(4)} SOL` : '—'}
             />
             <Field label="Signing" value={status?.wallet.signing_capable ? 'enabled' : 'read-only'} />
-            <Field label="Allow mainnet" value={status?.allow_mainnet ? 'YES' : 'no'} />
             <Field label="Emergency stop" value={eStop ? 'ACTIVE' : 'off'} highlight={eStop} />
             <Field label="Your risk limit" value={userSettings.riskLevel} />
             <Field label="Trading mode" value={userSettings.tradingMode} />

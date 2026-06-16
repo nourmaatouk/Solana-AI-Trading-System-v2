@@ -10,8 +10,6 @@
  *
  * Security:
  *   - Private key never appears in any log.
- *   - The client refuses to construct in mainnet mode unless
- *     ALLOW_MAINNET_EXECUTION=true.
  */
 import { loadEnv, type ExecutionEnv } from '../config/env';
 import { log } from '../logger';
@@ -66,12 +64,6 @@ export interface SolanaClientHandle {
 export function buildSolanaClient(opts: BuildSolanaClientOptions = {}): SolanaClientHandle {
   const env = opts.env ?? loadEnv();
   const wantsSigning = env.EXECUTION_MODE !== 'paper' && !!env.SOLANA_PRIVATE_KEY;
-
-  if (env.EXECUTION_MODE === 'mainnet' && !env.ALLOW_MAINNET_EXECUTION) {
-    throw new Error(
-      'Refusing to build a Solana client in mainnet mode while ALLOW_MAINNET_EXECUTION=false',
-    );
-  }
 
   let agent: ISolanaAgentKit | null = null;
 

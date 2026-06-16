@@ -12,7 +12,6 @@ import { DevnetDashboard } from './pages/DevnetDashboard';
 import { LiveMarket } from './pages/LiveMarket';
 import { WhySignal } from './pages/WhySignal';
 import { SentimentNews } from './pages/SentimentNews';
-import { AlertsPage } from './pages/AlertsPage';
 import { PaperTrading } from './pages/PaperTrading';
 import { SystemStatus } from './pages/SystemStatus';
 import { SettingsPage } from './pages/SettingsPage';
@@ -22,7 +21,6 @@ import { ExecutionPanel } from './pages/ExecutionPanel';
 import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { ErrorBanner } from './components/ErrorBanner';
-import { ModeBanner } from './components/ModeBanner';
 
 /**
  * Layout for the authenticated/app surface: sidebar + top bar chrome wrapping
@@ -64,7 +62,6 @@ function AppLayout() {
 
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         {!isMarket && <TopBar />}
-        {!isMarket && <ModeBanner />}
         {!isMarket && <ErrorBanner />}
         <main className="flex-1 overflow-hidden flex flex-col min-h-0">
           <Outlet />
@@ -113,7 +110,6 @@ function App() {
           <Route path="/market" element={<LiveMarket />} />
           <Route path="/why" element={<WhySignal />} />
           <Route path="/sentiment" element={<SentimentNews />} />
-          <Route path="/alerts" element={<AlertsPage />} />
           <Route path="/trade" element={mode === 'devnet' ? <Navigate to="/execution" replace /> : <PaperTrading />} />
           <Route path="/status" element={<SystemStatus />} />
           <Route path="/settings" element={<SettingsPage />} />

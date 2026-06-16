@@ -144,50 +144,6 @@ export function SignalBreakdown() {
         </div>
       </div>
 
-      {/* PPO RL Agent */}
-      {signal.rl_signal && (
-        <div className="rounded-lg p-3 space-y-2"
-          style={{
-            background: ppoOwns ? 'rgba(139,92,246,0.07)' : 'var(--bg-sub)',
-            border: ppoOwns ? '1px solid rgba(139,92,246,0.25)' : '1px solid var(--border)',
-          }}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs font-semibold" style={{ color: ppoOwns ? '#a78bfa' : 'var(--text-1)' }}>
-                PPO RL Agent
-              </span>
-              {ppoOwns && (
-                <span className="text-xs font-bold px-1.5 py-0.5 rounded"
-                  style={{ background: 'rgba(139,92,246,0.2)', color: '#a78bfa', letterSpacing: '0.05em' }}>
-                  DECIDER
-                </span>
-              )}
-            </div>
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border"
-              style={
-                signal.rl_signal === 'BUY'  ? { color: 'var(--green)', backgroundColor: 'var(--green-bg)', borderColor: 'var(--green-bd)' } :
-                signal.rl_signal === 'SELL' ? { color: 'var(--red)',   backgroundColor: 'var(--red-bg)',   borderColor: 'var(--red-bd)'   } :
-                                              { color: 'var(--text-2)', backgroundColor: 'var(--bg-sub)',  borderColor: 'var(--border)'   }
-              }>
-              {signal.rl_signal}
-            </span>
-          </div>
-          {signal.rl_confidence !== undefined && (
-            <div className="h-2.5 rounded-full overflow-hidden" style={{ background: 'var(--bg-sub)' }}>
-              <div className="h-full rounded-full transition-all duration-500"
-                style={{
-                  width: `${Math.min(100, signal.rl_confidence * 100)}%`,
-                  backgroundColor: signal.rl_signal === 'BUY' ? '#0ecb81' : signal.rl_signal === 'SELL' ? '#f6465d' : '#8B5CF6',
-                }} />
-            </div>
-          )}
-          <div className="text-xs" style={{ color: 'var(--text-3)' }}>
-            Confidence: {((signal.rl_confidence ?? 0) * 100).toFixed(1)}%
-            {ppoOwns && <span style={{ color: '#a78bfa' }}> · overrides ensemble</span>}
-          </div>
-        </div>
-      )}
-
     </div>
   );
 }

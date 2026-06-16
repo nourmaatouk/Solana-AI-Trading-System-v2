@@ -128,7 +128,6 @@ export function SystemStatus() {
   // ── AutoExecutor derived status (all from real backend data) ──
   const aeEnabled    = autoExec?.enabled ?? false;
   const execMode     = (execStatus?.execution_mode ?? uiMode).toUpperCase();
-  const mainnetOff   = execStatus ? !execStatus.allow_mainnet : true;
   const eStop        = execStatus?.emergency_stop?.enabled ?? false;
   const lastExec     = execStatus?.last_execution ?? null;
   const gDecision    = lastExec?.guardian?.decision ?? null;            // APPROVE | BLOCK
@@ -183,7 +182,7 @@ export function SystemStatus() {
             <div className="font-semibold text-sm" style={{ color: 'var(--text-1)' }}>AutoExecutor</div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold px-2 py-0.5 rounded"
-                style={{ color: execMode === 'MAINNET' ? 'var(--red)' : execMode === 'DEVNET' ? '#a78bfa' : '#0ea5e9', border: '1px solid currentColor' }}>
+                style={{ color: execMode === 'DEVNET' ? '#a78bfa' : '#0ea5e9', border: '1px solid currentColor' }}>
                 {execMode}
               </span>
               <span className="text-xs font-bold px-2 py-0.5 rounded-full border"
@@ -235,15 +234,6 @@ export function SystemStatus() {
                 ))}
               </div>
 
-              <div className="flex flex-wrap items-center gap-2 mt-3">
-                {mainnetOff && (
-                  <span className="text-xs font-semibold px-2 py-0.5 rounded"
-                    style={{ color: 'var(--green)', background: 'var(--green-bg)', border: '1px solid var(--green-bd)' }}
-                    title="Mainnet execution is hard-disabled (ALLOW_MAINNET_EXECUTION=false).">
-                    🔒 MAINNET DISABLED
-                  </span>
-                )}
-              </div>
 
               {!aeEnabled && (
                 <p className="text-xs mt-3" style={{ color: 'var(--text-3)' }}>

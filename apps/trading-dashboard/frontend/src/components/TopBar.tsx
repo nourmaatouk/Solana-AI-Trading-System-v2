@@ -13,7 +13,6 @@ const ALL_PAGES = [
   { path: '/why',       label: 'Why This Signal?', mode: undefined },
   { path: '/sentiment', label: 'Sentiment & News', mode: undefined },
   { path: '/correlation',label: 'Correlation',     mode: undefined },
-  { path: '/alerts',    label: 'Alerts',           mode: undefined },
   { path: '/trade',     label: 'Paper Trading',    mode: 'paper' as const },
   { path: '/backtest',  label: 'Backtesting',      mode: undefined },
   { path: '/execution', label: 'Execution',        mode: 'devnet' as const },

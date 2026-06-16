@@ -5,10 +5,9 @@
  */
 import { SOLANA_EXPLORER_BASE_URL } from '../config';
 
-/** Map an execution mode (paper|devnet|mainnet) or cluster string to an explorer cluster. */
+/** Map an execution mode (paper|devnet) or cluster string to an explorer cluster. */
 export function clusterForMode(modeOrCluster?: string | null): string {
   const v = (modeOrCluster ?? '').toLowerCase();
-  if (v === 'mainnet' || v === 'mainnet-beta') return 'mainnet-beta';
   if (v === 'testnet') return 'testnet';
   return 'devnet';
 }
@@ -16,6 +15,5 @@ export function clusterForMode(modeOrCluster?: string | null): string {
 /** Explorer URL for a transaction signature on the given cluster. */
 export function explorerTxUrl(signature: string, modeOrCluster?: string | null): string {
   const cluster = clusterForMode(modeOrCluster);
-  const suffix = cluster === 'mainnet-beta' ? '' : `?cluster=${cluster}`;
-  return `${SOLANA_EXPLORER_BASE_URL}/tx/${signature}${suffix}`;
+  return `${SOLANA_EXPLORER_BASE_URL}/tx/${signature}?cluster=${cluster}`;
 }

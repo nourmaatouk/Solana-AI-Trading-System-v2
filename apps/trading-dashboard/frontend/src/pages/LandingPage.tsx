@@ -352,14 +352,12 @@ export function LandingPage() {
 
             <div className="lp-modal-options">
               <button className="lp-opt" onClick={() => { setChooserOpen(false); setMode('paper'); navigate('/market'); }}>
-                <div className="lp-opt-emoji">📊</div>
                 <h3>Explore the Dashboard</h3>
                 <p>See the live market, AI signals, and paper-trading metrics. No wallet needed.</p>
                 <span className="lp-opt-link">View live market →</span>
               </button>
 
               <button className="lp-opt lp-opt-primary" onClick={startWithWallet}>
-                <div className="lp-opt-emoji">👛</div>
                 <h3>Connect Wallet &amp; Trade</h3>
                 <p>Connect your Solana wallet to execute trades on Solana devnet (a test network — no real funds), each validated by the Guardian before it runs.</p>
                 <span className="lp-opt-link">{walletConnected ? 'Start trading →' : 'Connect wallet →'}</span>
