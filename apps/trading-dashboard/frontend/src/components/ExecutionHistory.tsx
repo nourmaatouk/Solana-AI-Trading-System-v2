@@ -3,6 +3,20 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { useTradingStore, type ExecutionHistoryEntry } from '../store';
 import { explorerTxUrl } from '../utils/solanaExplorer';
 
+// Column layout shared by the header and every row so they never drift.
+// Mirrors the paper-mode table: Time | Signal | Action | Guardian | Detail.
+const GRID_COLUMNS = '70px 64px 52px 78px 1fr';
+
+// Model signal direction, the same labels paper-mode uses (UP/DOWN/NEUTRAL).
+const SIGNAL_LABEL: Record<string, string> = { BUY: 'UP', SELL: 'DOWN', HOLD: 'NEUTRAL' };
+
+function dirColor(a: string | null | undefined): string {
+  const u = (a ?? '').toUpperCase();
+  if (u === 'BUY' || u === 'UP') return 'var(--green)';
+  if (u === 'SELL' || u === 'DOWN') return 'var(--red)';
+  return 'var(--accent)'; // HOLD / NEUTRAL
+}
+
 function formatTime(iso: string): string {
   try {
     return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -13,20 +27,27 @@ function formatTime(iso: string): string {
 
 function Row({ entry }: { entry: ExecutionHistoryEntry }) {
   const approved = entry.decision === 'APPROVE';
-  const statusColor = approved
-    ? entry.execution_status === 'confirmed'
-      ? 'var(--green)'
-      : 'var(--accent)'
-    : 'var(--red)';
+  // A HOLD is not a rejected trade — the model deliberately chose not to trade.
+  // Keep it neutral ("hold") rather than a red "blocked" row.
+  const isHold = !approved && entry.blocked_by === 'ACTION_HOLD';
 
-  const sideColor =
-    entry.side === 'BUY' ? 'var(--green)' : entry.side === 'SELL' ? 'var(--red)' : 'var(--text-3)';
+  // Intended action survives a block via signal_action (the Guardian's
+  // sanitized_action — and therefore `side` — is null on a block). Older rows
+  // without signal_action fall back to side, then to HOLD for ACTION_HOLD.
+  const action = entry.signal_action ?? entry.side ?? (isHold ? 'HOLD' : null);
+  const signal = action ? (SIGNAL_LABEL[action] ?? action) : '—';
+
+  // Guardian verdict column (paper-mode style: ALLOW / BLOCKED, plus neutral hold).
+  const guardianLabel = approved ? 'ALLOW' : isHold ? 'hold' : 'BLOCKED';
+  const guardianColor = approved
+    ? entry.execution_status === 'confirmed' ? 'var(--green)' : 'var(--accent)'
+    : isHold ? 'var(--text-3)' : 'var(--red)';
 
   return (
     <div
-      className="grid gap-2 px-3 py-2 text-xs rounded-lg"
+      className="grid gap-2 px-3 py-2 text-xs rounded-lg items-center"
       style={{
-        gridTemplateColumns: '70px 52px 42px 48px 64px 1fr',
+        gridTemplateColumns: GRID_COLUMNS,
         background: 'var(--bg-sub)',
         border: '1px solid var(--border)',
       }}
@@ -36,30 +57,22 @@ function Row({ entry }: { entry: ExecutionHistoryEntry }) {
         {formatTime(entry.request_received_at_utc)}
       </span>
 
-      {/* Decision badge */}
-      <span
-        className="font-semibold"
-        style={{ color: statusColor }}
-      >
-        {approved ? (entry.execution_status ?? 'approved') : 'blocked'}
+      {/* Signal (model direction) */}
+      <span className="font-semibold" style={{ color: dirColor(action) }}>
+        {signal}
       </span>
 
-      {/* Side */}
-      <span className="font-semibold" style={{ color: sideColor }}>
-        {entry.side ?? '—'}
+      {/* Action (intended trade) */}
+      <span className="font-semibold" style={{ color: dirColor(action) }}>
+        {action ?? '—'}
       </span>
 
-      {/* Amount */}
-      <span style={{ color: 'var(--text-2)', fontVariantNumeric: 'tabular-nums' }}>
-        {entry.amount_sol != null ? `${entry.amount_sol} SOL` : '—'}
+      {/* Guardian verdict */}
+      <span className="font-semibold" style={{ color: guardianColor }}>
+        {guardianLabel}
       </span>
 
-      {/* Mode */}
-      <span style={{ color: 'var(--text-3)' }}>
-        {entry.mode ?? '—'}
-      </span>
-
-      {/* Reason / signature (signature → clickable explorer link) */}
+      {/* Detail — on-chain signature for confirmed trades, else the reason */}
       {entry.signature ? (
         <a
           href={explorerTxUrl(entry.signature, entry.mode)}
@@ -69,17 +82,19 @@ function Row({ entry }: { entry: ExecutionHistoryEntry }) {
           style={{ color: 'var(--accent)' }}
           title={`View ${entry.signature} on Solana Explorer`}
         >
-          {entry.signature.slice(0, 8)}… ↗
+          {entry.amount_sol != null ? `${entry.amount_sol} SOL · ` : ''}{entry.signature.slice(0, 8)}… ↗
         </a>
       ) : (
         <span
-          className="truncate font-mono"
+          className="truncate"
           style={{ color: 'var(--text-3)' }}
           title={entry.blocked_by ?? entry.error ?? entry.reasons[0] ?? ''}
         >
-          {entry.decision === 'BLOCK'
-            ? `Blocked before chain: ${entry.blocked_by ?? entry.reasons[0] ?? 'Guardian'}`
-            : entry.error ?? entry.reasons[0] ?? '—'}
+          {isHold
+            ? 'No trade — model signal is HOLD'
+            : !approved
+              ? `Blocked: ${entry.blocked_by ?? entry.reasons[0] ?? 'Guardian'}`
+              : entry.error ?? entry.reasons[0] ?? 'all checks passed'}
         </span>
       )}
     </div>
@@ -103,15 +118,14 @@ export function ExecutionHistory() {
         <div
           className="grid gap-2 px-3 text-[11px] flex-1"
           style={{
-            gridTemplateColumns: '70px 52px 42px 48px 64px 1fr',
+            gridTemplateColumns: GRID_COLUMNS,
             color: 'var(--text-3)',
           }}
         >
           <span>Time</span>
-          <span>Result</span>
-          <span>Side</span>
-          <span>Amount</span>
-          <span>Mode</span>
+          <span>Signal</span>
+          <span>Action</span>
+          <span>Guardian</span>
           <span>Detail</span>
         </div>
         {walletPubkey && (

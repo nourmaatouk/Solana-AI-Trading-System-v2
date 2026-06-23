@@ -269,7 +269,7 @@ export function ExecutionPanel() {
             />
             <Field
               label="Balance"
-              value={status?.wallet.balance_sol != null ? `${status.wallet.balance_sol.toFixed(4)} SOL` : '—'}
+              value={status?.wallet.balance_sol != null ? `${status.wallet.balance_sol.toFixed(6)} SOL` : '—'}
             />
             <Field label="Signing" value={status?.wallet.signing_capable ? 'enabled' : 'read-only'} />
             <Field label="Emergency stop" value={eStop ? 'ACTIVE' : 'off'} highlight={eStop} />

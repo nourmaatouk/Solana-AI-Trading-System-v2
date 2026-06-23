@@ -12,6 +12,9 @@ export interface ExecutionHistoryEntry {
   reasons: string[];
   execution_status: string | null;
   mode: string | null;
+  /** The fused model action the Guardian evaluated (BUY/SELL/HOLD). Unlike
+   *  `side`, this survives a block so the history can show the intended trade. */
+  signal_action: 'BUY' | 'SELL' | 'HOLD' | null;
   side: 'BUY' | 'SELL' | null;
   amount_sol: number | null;
   asset: string | null;

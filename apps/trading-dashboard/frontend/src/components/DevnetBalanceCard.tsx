@@ -99,7 +99,7 @@ export function DevnetBalanceCard() {
 
       <div className="flex items-baseline gap-2 mb-3">
         <span className="text-2xl font-bold font-mono" style={{ color: 'var(--text-1)' }}>
-          {balance != null ? balance.balance_sol.toFixed(4) : '—'}
+          {balance != null ? balance.balance_sol.toFixed(6) : '—'}
         </span>
         <span className="text-sm font-semibold" style={{ color: 'var(--text-3)' }}>SOL</span>
         {balance && (

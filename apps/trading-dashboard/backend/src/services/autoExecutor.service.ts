@@ -14,7 +14,9 @@
  * Safety invariants (enforced here before calling workflow.execute):
  * - auto_execute.json must be enabled.
  * - Emergency stop blocks execution.
- * - Signal must be BUY or SELL (HOLD is skipped; Guardian also checks this).
+ * - BUY/SELL signals are executed. HOLD (or missing action) signals never
+ *   trade, but are recorded once per fresh signal as a "hold" Guardian decision
+ *   so the ~15-min decision cadence stays visible in the history.
  * - Duplicate signal keys are skipped for SIGNAL_DEDUP_WINDOW_SECONDS.
  * - Guardian runs on every call regardless — this class never bypasses it.
  * - WALLET_MODE=phantom means the backend cannot sign; execution is skipped
@@ -131,6 +133,9 @@ export class AutoExecutor {
   private lastSignalKey: string | null = null;
   private lastExecutedAt: string | null = null;
   private lastSkippedReason: string | null = null;
+  /** Last signal key we recorded a (non-trade) HOLD decision for — guards
+   *  against re-logging the same signal on the 30s poll fallback. */
+  private lastDecisionKey: string | null = null;
 
   constructor(workflow?: ExecutionWorkflow, signalPoller?: SignalPoller) {
     this.workflow = workflow ?? new ExecutionWorkflow();
@@ -199,14 +204,28 @@ export class AutoExecutor {
       return;
     }
 
-    const action = (signal.action ?? '').toUpperCase();
-    if (action !== 'BUY' && action !== 'SELL') {
-      this._skip(`signal action is ${action || 'missing'} — skipping`);
-      return;
-    }
-
     const key = computeSignalKey(signal);
     this.lastSignalKey = key;
+
+    // Exactly one verdict per signal — for EVERY outcome (hold, blocked, or
+    // confirmed). The poller emits a fresh key only when a new ~15-min candle
+    // arrives; the 30s poll fallback re-reads the SAME cached signal in
+    // between. Blocked and HOLD verdicts never enter the disk-backed dedup set
+    // (dedup.mark fires only for on-chain trades), so without this in-memory
+    // guard a blocked/HOLD signal would be re-recorded every poll cycle.
+    // lastDecisionKey is set only AFTER a verdict is successfully recorded
+    // (inside _recordDecision/_execute) so a transient error — e.g. the Python
+    // signal API being briefly down — is retried on the next poll rather than
+    // silently swallowing the candle.
+    if (key === this.lastDecisionKey) return;
+
+    const action = (signal.action ?? '').toUpperCase();
+    if (action !== 'BUY' && action !== 'SELL') {
+      // HOLD (or missing action) is not a trade. Record the Guardian decision
+      // so it shows up in the history as a single "hold" row per candle.
+      await this._recordDecision(key, source);
+      return;
+    }
 
     if (this.dedup.has(key)) {
       this._skip(`duplicate signal key ${key.slice(0, 30)}… (source=${source})`);
@@ -214,6 +233,41 @@ export class AutoExecutor {
     }
 
     await this._execute(key, source);
+  }
+
+  /**
+   * Record a non-trade (HOLD) Guardian decision so it appears in the history
+   * as a "hold" row. Runs the Guardian via the workflow — which returns
+   * BLOCK/ACTION_HOLD for a HOLD signal — and persists that verdict. No trade
+   * is ever placed and nothing is signed.
+   */
+  private async _recordDecision(key: string, source: string): Promise<void> {
+    this.running = true;
+    try {
+      const daily_executed_sol = readDailyVolume();
+      const user_risk_level = readUserRiskLevel();
+      const amount_sol = readUserMaxTradeSize() ?? FALLBACK_AMOUNT_SOL;
+      const result = await this.workflow.execute({
+        amount_sol,
+        daily_executed_sol,
+        ...(user_risk_level ? { user_risk_level } : {}),
+      });
+
+      recordLastExecution(result);
+      // Mark processed only on success so a transient failure is retried.
+      this.lastDecisionKey = key;
+      this.lastExecutedAt = new Date().toISOString();
+      this.lastSkippedReason = null;
+
+      console.log(
+        `[auto-executor] ${source}: recorded decision guardian=${result.guardian.decision}` +
+          ` blocked_by=${result.guardian.blocked_by ?? 'none'} (no trade)`,
+      );
+    } catch (err) {
+      console.error('[auto-executor] decision-record error:', (err as Error).message);
+    } finally {
+      this.running = false;
+    }
   }
 
   private async _execute(key: string, source: string): Promise<void> {
@@ -229,6 +283,10 @@ export class AutoExecutor {
       });
 
       recordLastExecution(result);
+      // Mark processed only on success (after the verdict is persisted) so a
+      // blocked BUY/SELL isn't re-recorded every poll, while a thrown error
+      // below leaves the key unset and is retried on the next poll.
+      this.lastDecisionKey = key;
 
       if (
         result.execution?.status === 'confirmed' ||

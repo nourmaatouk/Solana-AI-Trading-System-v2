@@ -9,6 +9,9 @@ export interface ExecutionHistoryEntry {
   reasons: string[];
   execution_status: string | null;
   mode: string | null;
+  /** The fused model action the Guardian evaluated (BUY/SELL/HOLD) — present
+   *  even on a blocked row, so the table can show the intended trade. */
+  signal_action: 'BUY' | 'SELL' | 'HOLD' | null;
   side: 'BUY' | 'SELL' | null;
   amount_sol: number | null;
   asset: string | null;
@@ -137,6 +140,17 @@ export const useTradingStore = create<TradingStore>((set) => ({
 
   prependExecutionEntry: (entry) =>
     set((state) => {
+      // Idempotent: the same decision can be delivered more than once — via
+      // both the execution_update event and a later execution_history_snapshot,
+      // or over two WS connections. request_received_at_utc is ms-precise and
+      // unique per decision, so use it to drop a row we already have.
+      if (
+        state.executionHistory.some(
+          (e) => e.request_received_at_utc === entry.request_received_at_utc,
+        )
+      ) {
+        return state;
+      }
       const updated = [entry, ...state.executionHistory];
       if (updated.length > EXECUTION_HISTORY_MAX) updated.pop();
       return { executionHistory: updated };

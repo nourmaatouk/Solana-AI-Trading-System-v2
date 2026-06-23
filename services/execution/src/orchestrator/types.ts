@@ -1,7 +1,7 @@
 /**
  * Orchestrator types — the public shape that the Node backend consumes.
  */
-import type { ExecutionMode, GuardianResult, RiskLevel } from '../guardian/types';
+import type { ExecutionMode, GuardianResult, RiskLevel, TradeAction } from '../guardian/types';
 import type { ExecutionResult } from '../solana/types';
 import type { NormalisedSignal } from '../signalClient';
 
@@ -50,6 +50,10 @@ export interface ExecutionWorkflowResult {
   request_completed_at_utc: string;
   guardian: GuardianResult;
   execution: ExecutionResult | null;
+  /** The fused model action (BUY/SELL/HOLD) the Guardian evaluated. Retained
+   *  even when the trade is blocked so the history can show the intended
+   *  direction (the Guardian's sanitized_action is null on a block). */
+  signal_action: TradeAction;
   /** Optional human-readable explanation. Filled only when narration is on
    *  AND the Eliza runtime succeeded. */
   narration: string | null;

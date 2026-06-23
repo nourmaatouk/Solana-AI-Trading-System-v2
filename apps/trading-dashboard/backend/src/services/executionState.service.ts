@@ -137,6 +137,7 @@ export function recordLastExecution(result: ExecutionWorkflowResult): void {
     reasons: result.guardian.reasons,
     execution_status: result.execution?.status ?? null,
     mode: result.execution?.mode ?? result.guardian.sanitized_action?.execution_mode ?? null,
+    signal_action: result.signal_action ?? null,
     side: result.execution?.side ?? result.guardian.sanitized_action?.side ?? null,
     amount_sol: result.execution?.amount_sol ?? result.guardian.sanitized_action?.amount_sol ?? null,
     asset: result.execution?.asset ?? result.guardian.sanitized_action?.asset ?? null,

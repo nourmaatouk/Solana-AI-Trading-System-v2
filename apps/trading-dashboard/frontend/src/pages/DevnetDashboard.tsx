@@ -5,8 +5,6 @@ import { MetricCard } from '../components/MetricCard';
 import { SignalBreakdown } from '../components/SignalBreakdown';
 import { ExecutionHistory } from '../components/ExecutionHistory';
 import { WalletStatusCard } from '../components/WalletStatusCard';
-import { GuardianBadge } from '../components/GuardianBadge';
-import { explorerTxUrl } from '../utils/solanaExplorer';
 import { EXECUTION_PANEL_REFRESH_MS } from '../config';
 
 const card = { background: 'var(--bg-panel)', border: '1px solid var(--border)' } as React.CSSProperties;
@@ -18,9 +16,9 @@ const ic = (d: string) => (
 
 /**
  * Devnet-mode dashboard: a wallet / on-chain view (balance, network, last
- * transaction, Guardian decision, execution history) — distinct from the
- * paper-mode Dashboard. All data comes from /api/execution/status and the
- * WebSocket-fed execution history; nothing is hard-coded.
+ * execution metric, Guardian decision history) — distinct from the paper-mode
+ * Dashboard. All data comes from /api/execution/status and the WebSocket-fed
+ * execution history; nothing is hard-coded.
  */
 export function DevnetDashboard() {
   useAISignal(); // keep the store signal fresh for the breakdown
@@ -72,7 +70,7 @@ export function DevnetDashboard() {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <MetricCard
           title="Wallet Balance"
-          value={loading && !status ? '…' : w?.balance_sol != null ? `${w.balance_sol.toFixed(4)}` : '—'}
+          value={loading && !status ? '…' : w?.balance_sol != null ? `${w.balance_sol.toFixed(6)}` : '—'}
           subtitle="SOL · devnet"
           icon={ic('M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z')}
         />
@@ -105,49 +103,9 @@ export function DevnetDashboard() {
         />
       </div>
 
-      {/* Two-column: wallet + last tx | signal breakdown */}
+      {/* Two-column: wallet | signal breakdown */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <div className="space-y-4">
-          <WalletStatusCard />
-
-          {/* Last transaction */}
-          <div className="rounded-xl p-4" style={card}>
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-2)' }}>Last transaction</div>
-              {last && <GuardianBadge result={last.guardian} />}
-            </div>
-            {!last ? (
-              <div className="text-xs text-center py-4" style={{ color: 'var(--text-3)' }}>
-                No executions yet — approved BUY/SELL signals will appear here with their on-chain signature.
-              </div>
-            ) : (
-              <div className="space-y-1.5 text-xs">
-                <Row label="Action" value={exec ? `${exec.side} ${exec.amount_sol} SOL` : (last.guardian.sanitized_action ? `${last.guardian.sanitized_action.side} ${last.guardian.sanitized_action.amount_sol} SOL` : '—')} />
-                <Row label="Status" value={dash(exec?.status ?? (last.guardian.approved ? 'approved' : 'blocked'))} />
-                <Row label="Mode" value={dash(exec?.mode)} />
-                {!last.guardian.approved && <Row label="Blocked by" value={dash(last.guardian.blocked_by)} warn />}
-                {exec?.signature && (
-                  <div className="flex items-center justify-between gap-3">
-                    <span style={{ color: 'var(--text-3)' }}>Signature</span>
-                    <a href={explorerTxUrl(exec.signature, exec.mode)} target="_blank" rel="noreferrer"
-                      className="font-mono hover:underline truncate" style={{ color: 'var(--accent)' }}>
-                      {exec.signature.slice(0, 8)}…{exec.signature.slice(-8)} ↗
-                    </a>
-                  </div>
-                )}
-                {last.narration && (
-                  <div className="pt-1.5" style={{ borderTop: '1px solid var(--border)' }}>
-                    <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--accent)' }}>
-                      <span>✦</span> AI Narrator · Sentinel
-                    </div>
-                    <p className="italic" style={{ color: 'var(--text-3)' }}>“{last.narration}”</p>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
+        <WalletStatusCard />
         <SignalBreakdown />
       </div>
 
@@ -158,20 +116,11 @@ export function DevnetDashboard() {
             Guardian decision history
           </div>
           <p className="text-xs" style={{ color: 'var(--text-3)' }}>
-            Confirmed rows include a devnet signature. Blocked rows stopped before on-chain execution.
+            Confirmed rows include a devnet signature. Hold rows mean the model chose not to trade. Blocked rows were stopped by the Guardian before on-chain execution.
           </p>
         </div>
         <ExecutionHistory />
       </div>
-    </div>
-  );
-}
-
-function Row({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <span style={{ color: 'var(--text-3)' }}>{label}</span>
-      <span className="font-mono truncate" style={{ color: warn ? 'var(--red)' : 'var(--text-1)' }} title={value}>{value}</span>
     </div>
   );
 }

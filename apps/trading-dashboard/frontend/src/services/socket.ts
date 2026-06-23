@@ -14,7 +14,17 @@ class SocketService {
   private destroyed = false;
 
   connect(): void {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) return;
+    // Reuse a socket that is OPEN *or still CONNECTING*. Guarding only on OPEN
+    // lets React StrictMode (which mounts→unmounts→remounts effects in dev)
+    // create a second WebSocket while the first is mid-handshake. The first is
+    // then orphaned but stays connected and keeps delivering every message,
+    // so each broadcast fires the handlers twice → duplicate history rows.
+    if (
+      this.ws &&
+      (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)
+    ) {
+      return;
+    }
 
     try {
       this.ws = new WebSocket(WS_URL);

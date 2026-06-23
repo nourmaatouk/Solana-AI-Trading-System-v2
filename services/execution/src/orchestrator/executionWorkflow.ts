@@ -66,6 +66,7 @@ export class ExecutionWorkflow {
         request_completed_at_utc: new Date().toISOString(),
         guardian,
         execution: null,
+        signal_action: input.action,
         narration,
       };
     }
@@ -81,6 +82,7 @@ export class ExecutionWorkflow {
       request_completed_at_utc: new Date().toISOString(),
       guardian,
       execution,
+      signal_action: input.action,
       narration,
     };
   }
@@ -158,7 +160,17 @@ export class ExecutionWorkflow {
     return {
       asset: merged.asset,
       action: merged.action,
-      confidence: merged.confidence,
+      // Confidence gate uses the classification probability — the SAME field
+      // paper-mode gates against the 0.69 threshold. The top-level `confidence`
+      // is |fused_score| (a different, much smaller scale gated by the fusion
+      // layer at ±0.30), so checking it against 0.69 made devnet over-block
+      // with LOW_CONFIDENCE while paper APPROVED the identical signal. Fall
+      // back to the fused confidence only when classification_confidence is
+      // genuinely absent.
+      confidence:
+        merged.classification_confidence && merged.classification_confidence > 0
+          ? merged.classification_confidence
+          : merged.confidence,
       fused_score: merged.fused_score,
       risk_level: merged.risk_level,
       spoofing_confidence: merged.spoofing_confidence,
